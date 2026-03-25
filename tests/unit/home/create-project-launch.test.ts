@@ -45,7 +45,6 @@ describe('createHomeProjectLaunch', () => {
       body: JSON.stringify({
         name: '开场白',
         description: '第一章内容',
-        mode: 'novel-promotion',
       }),
     })
     expect(apiFetch).toHaveBeenNthCalledWith(2, '/api/novel-promotion/project-1', {

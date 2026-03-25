@@ -1,18 +1,12 @@
 import type { CapabilitySelections } from '@/lib/model-config-contract'
 
 // ============================================
-// 项目模式类型
-// ============================================
-export type ProjectMode = 'novel-promotion'
-
-// ============================================
 // 基础项目类型
 // ============================================
 export interface BaseProject {
   id: string
   name: string
   description: string | null
-  mode: ProjectMode
   userId: string
   createdAt: Date
   updatedAt: Date

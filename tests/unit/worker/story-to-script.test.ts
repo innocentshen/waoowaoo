@@ -124,7 +124,6 @@ describe('worker story-to-script behavior', () => {
     prismaMock.project.findUnique.mockResolvedValue({
       id: 'project-1',
       name: 'Project One',
-      mode: 'novel-promotion',
     })
 
     prismaMock.novelPromotionProject.findUnique.mockResolvedValue({

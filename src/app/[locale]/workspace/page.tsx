@@ -155,10 +155,7 @@ export default function WorkspacePage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          ...formData,
-          mode: 'novel-promotion' // 固定为 novel-promotion
-        })
+        body: JSON.stringify(formData)
       })
 
       if (response.ok) {

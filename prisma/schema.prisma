@@ -353,7 +353,6 @@ model Project {
   id                 String                 @id @default(uuid())
   name               String
   description        String?                @db.Text
-  mode               String                 @default("novel-promotion")
   userId             String
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @default(now()) @updatedAt

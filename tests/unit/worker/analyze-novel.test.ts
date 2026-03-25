@@ -85,7 +85,6 @@ describe('worker analyze-novel behavior', () => {
 
     prismaMock.project.findUnique.mockResolvedValue({
       id: 'project-1',
-      mode: 'novel-promotion',
     })
 
     prismaMock.novelPromotionProject.findUnique.mockResolvedValue({

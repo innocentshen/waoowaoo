@@ -113,7 +113,6 @@ export async function createHomeProjectLaunch({
     body: JSON.stringify({
       name: projectName,
       description: storyText,
-      mode: 'novel-promotion',
     }),
   })
 

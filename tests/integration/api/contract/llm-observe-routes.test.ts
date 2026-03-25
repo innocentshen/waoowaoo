@@ -5,7 +5,6 @@ import { buildMockRequest } from '../../../helpers/request'
 
 type AuthState = {
   authenticated: boolean
-  projectMode: 'novel-promotion' | 'other'
 }
 
 type LLMRouteCase = {
@@ -23,7 +22,6 @@ type RouteContext = {
 
 const authState = vi.hoisted<AuthState>(() => ({
   authenticated: true,
-  projectMode: 'novel-promotion',
 }))
 
 const maybeSubmitLLMTaskMock = vi.hoisted(() =>
@@ -77,14 +75,14 @@ vi.mock('@/lib/api-auth', () => {
       if (!authState.authenticated) return unauthorized()
       return {
         session: { user: { id: 'user-1' } },
-        project: { id: projectId, userId: 'user-1', mode: authState.projectMode },
+        project: { id: projectId, userId: 'user-1' },
       }
     },
     requireProjectAuthLight: async (projectId: string) => {
       if (!authState.authenticated) return unauthorized()
       return {
         session: { user: { id: 'user-1' } },
-        project: { id: projectId, userId: 'user-1', mode: authState.projectMode },
+        project: { id: projectId, userId: 'user-1' },
       }
     },
   }
@@ -329,7 +327,6 @@ describe('api contract - llm observe routes (behavior)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authState.authenticated = true
-    authState.projectMode = 'novel-promotion'
     maybeSubmitLLMTaskMock.mockResolvedValue(
       NextResponse.json({
         success: true,

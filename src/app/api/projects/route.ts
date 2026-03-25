@@ -188,12 +188,11 @@ export const POST = apiHandler(async (request: NextRequest) => {
     where: { userId: session.user.id }
   })
 
-  // 创建基础项目（mode 固定为 novel-promotion）
+  // 创建基础项目
   const project = await prisma.project.create({
     data: {
       name: name.trim(),
       description: description?.trim() || null,
-      mode: 'novel-promotion',
       userId: session.user.id
     }
   })

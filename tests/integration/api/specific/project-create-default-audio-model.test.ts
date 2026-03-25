@@ -28,7 +28,6 @@ const prismaMock = vi.hoisted(() => ({
       id: 'project-1',
       name: 'Test Project',
       description: null,
-      mode: 'novel-promotion',
       userId: 'user-1',
     })),
   },
@@ -60,6 +59,13 @@ describe('api specific - project create default audio model', () => {
 
     const res = await mod.POST(req, routeContext)
     expect(res.status).toBe(201)
+    expect(prismaMock.project.create).toHaveBeenCalledWith({
+      data: {
+        name: 'Test Project',
+        description: null,
+        userId: 'user-1',
+      },
+    })
     expect(prismaMock.novelPromotionProject.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: 'project-1',
