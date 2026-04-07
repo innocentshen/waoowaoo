@@ -118,6 +118,7 @@ export const PRESET_MODELS: PresetModel[] = [
     { modelId: 'MiniMax-M2.1', name: 'MiniMax M2.1', type: 'llm', provider: 'minimax' },
     { modelId: 'MiniMax-M2.1-highspeed', name: 'MiniMax M2.1 Highspeed', type: 'llm', provider: 'minimax' },
     { modelId: 'MiniMax-M2', name: 'MiniMax M2', type: 'llm', provider: 'minimax' },
+    { modelId: 'grok-4', name: 'Grok 4', type: 'llm', provider: 'grok' },
 
     // 图像模型
     { modelId: 'banana', name: 'Banana Pro', type: 'image', provider: 'fal' },
@@ -132,6 +133,7 @@ export const PRESET_MODELS: PresetModel[] = [
     { modelId: 'imagen-4.0-generate-001', name: 'Imagen 4', type: 'image', provider: 'google' },
     { modelId: 'imagen-4.0-ultra-generate-001', name: 'Imagen 4 Ultra', type: 'image', provider: 'google' },
     { modelId: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', type: 'image', provider: 'google' },
+    { modelId: 'grok-imagine-image', name: 'Grok Imagine Image', type: 'image', provider: 'grok' },
     // 视频模型
     { modelId: 'doubao-seedance-1-0-pro-fast-251015', name: 'Seedance 1.0 Pro Fast', type: 'video', provider: 'ark' },
     { modelId: 'doubao-seedance-1-0-lite-i2v-250428', name: 'Seedance 1.0 Lite', type: 'video', provider: 'ark' },
@@ -145,6 +147,7 @@ export const PRESET_MODELS: PresetModel[] = [
     { modelId: 'veo-3.0-generate-001', name: 'Veo 3.0', type: 'video', provider: 'google' },
     { modelId: 'veo-3.0-fast-generate-001', name: 'Veo 3.0 Fast', type: 'video', provider: 'google' },
     { modelId: 'veo-2.0-generate-001', name: 'Veo 2.0', type: 'video', provider: 'google' },
+    { modelId: 'grok-imagine-video', name: 'Grok Imagine Video', type: 'video', provider: 'grok' },
     // 阿里云百炼图生视频模型
     { modelId: 'wan2.7-i2v', name: 'Wan2.7 I2V', type: 'video', provider: 'bailian' },
     { modelId: 'wan2.6-i2v-flash', name: 'Wan2.6 I2V Flash', type: 'video', provider: 'bailian' },
@@ -201,6 +204,7 @@ export const PRESET_PROVIDERS: Omit<Provider, 'apiKey' | 'hasApiKey'>[] = [
     { id: 'ark', name: 'Volcengine Ark' },
     { id: 'google', name: 'Google AI Studio' },
     { id: 'bailian', name: 'Alibaba Bailian' },
+    { id: 'grok', name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1' },
     { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
     { id: 'minimax', name: 'MiniMax Hailuo', baseUrl: 'https://api.minimaxi.com/v1' },
     { id: 'vidu', name: 'Vidu' },
@@ -213,6 +217,7 @@ const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
     vidu: '生数科技 Vidu',
     bailian: '阿里云百炼',
     siliconflow: '硅基流动',
+    grok: 'xAI Grok',
 }
 
 function isZhLocale(locale?: string): boolean {
@@ -335,6 +340,14 @@ export const PROVIDER_TUTORIALS: ProviderTutorial[] = [
             {
                 text: 'google_step1',
                 url: 'https://aistudio.google.com/api-keys'
+            }
+        ]
+    },
+    {
+        providerId: 'grok',
+        steps: [
+            {
+                text: 'grok_step1'
             }
         ]
     },

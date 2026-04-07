@@ -94,4 +94,22 @@ describe('llm test connection', () => {
     expect(result.model).toBe('Qwen/Qwen3-32B')
     expect(result.answer).toBe('balance=9.8000')
   })
+
+  it('tests grok provider via official xAI endpoint', async () => {
+    openAIState.create.mockResolvedValueOnce({
+      model: 'grok-4',
+      choices: [{ message: { content: '2' } }],
+    })
+
+    const result = await testLlmConnection({
+      provider: 'grok',
+      apiKey: 'grok-key',
+      model: 'grok-4',
+    })
+
+    expect(result.provider).toBe('grok')
+    expect(result.message).toBe('grok 连接成功')
+    expect(result.model).toBe('grok-4')
+    expect(result.answer).toBe('2')
+  })
 })

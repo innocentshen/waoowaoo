@@ -40,7 +40,7 @@ import { shouldUseOpenAIReasoningProviderOptions } from './reasoning-capability'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
 
-const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
+const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'grok'])
 
 type GoogleModelClient = {
   generateContentStream?: (params: unknown) => Promise<unknown>

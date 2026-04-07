@@ -9,6 +9,7 @@ import { ImageGenerator, VideoGenerator, AudioGenerator } from './base'
 import { FalBananaGenerator } from './fal'
 import { ArkSeedreamGenerator, ArkSeedanceVideoGenerator } from './ark'
 import { FalVideoGenerator } from './fal'
+import { GrokImageGenerator, GrokVideoGenerator } from './grok'
 import {
     GoogleGeminiImageGenerator,
     GoogleImagenGenerator,
@@ -67,6 +68,8 @@ export function createImageGenerator(provider: string, modelId?: string): ImageG
             return new BailianImageGenerator()
         case 'siliconflow':
             return new SiliconFlowImageGenerator()
+        case 'grok':
+            return new GrokImageGenerator()
         default:
             throw new Error(`Unknown image generator provider: ${provider}`)
     }
@@ -96,6 +99,8 @@ export function createVideoGenerator(provider: string): VideoGenerator {
             return new BailianVideoGenerator()
         case 'siliconflow':
             return new SiliconFlowVideoGenerator()
+        case 'grok':
+            return new GrokVideoGenerator()
         default:
             throw new Error(`Unknown video generator provider: ${provider}`)
     }

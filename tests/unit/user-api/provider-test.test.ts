@@ -4,6 +4,9 @@ import { testProviderConnection } from '@/lib/user-api/provider-test'
 const fetchMock = vi.hoisted(() =>
   vi.fn(async (input: unknown) => {
     const url = String(input)
+    if (url.includes('api.x.ai/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'grok-4' }] }), { status: 200 })
+    }
     if (url.includes('dashscope.aliyuncs.com/compatible-mode/v1/models')) {
       return new Response(JSON.stringify({ data: [{ id: 'qwen-plus' }] }), { status: 200 })
     }
@@ -60,6 +63,20 @@ describe('provider test connection', () => {
       name: 'credits',
       status: 'pass',
       message: 'Balance: 12.3000',
+    })
+  })
+
+  it('passes grok probe with models step', async () => {
+    const result = await testProviderConnection({
+      apiType: 'grok',
+      apiKey: 'grok-key',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.steps[0]).toEqual({
+      name: 'models',
+      status: 'pass',
+      message: 'Found 1 models',
     })
   })
 

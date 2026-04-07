@@ -48,7 +48,7 @@ function getErrorMessage(error: unknown): string {
  * 解析 externalId 获取 provider、type 和请求信息
  */
 export function parseExternalId(externalId: string): {
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'UNKNOWN'
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'GROK' | 'UNKNOWN'
     type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN'
     endpoint?: string
     requestId: string
@@ -210,9 +210,23 @@ export function parseExternalId(externalId: string): {
         }
     }
 
+    if (externalId.startsWith('GROK:')) {
+        const parts = externalId.split(':')
+        const type = parts[1]
+        const requestId = parts.slice(2).join(':')
+        if ((type !== 'VIDEO' && type !== 'IMAGE') || !requestId) {
+            throw new Error(`无效 GROK externalId: "${externalId}"，应为 GROK:TYPE:requestId`)
+        }
+        return {
+            provider: 'GROK',
+            type: type as 'VIDEO' | 'IMAGE',
+            requestId,
+        }
+    }
+
     throw new Error(
         `无法识别的 externalId 格式: "${externalId}". ` +
-        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId`
+        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId, GROK:TYPE:requestId`
     )
 }
 
@@ -252,6 +266,8 @@ export async function pollAsyncTask(
             return await pollBailianTask(parsed.requestId, userId)
         case 'SILICONFLOW':
             return await pollSiliconFlowTask(parsed.requestId)
+        case 'GROK':
+            return await pollGrokTask(parsed.requestId, userId)
         default:
             // 🔥 移除 fallback：未知 provider 直接抛出错误
             throw new Error(`未知的 Provider: ${parsed.provider}`)
@@ -859,6 +875,99 @@ async function pollSiliconFlowTask(requestId: string): Promise<PollResult> {
     }
 }
 
+interface GrokVideoStatusResponse {
+    status?: string
+    video?: {
+        url?: string
+    }
+    error?: {
+        message?: string
+    } | string
+    message?: string
+}
+
+function readGrokResponseError(data: GrokVideoStatusResponse): string {
+    if (typeof data.error === 'string' && data.error.trim()) return data.error.trim()
+    if (data.error && typeof data.error === 'object') {
+        const message = typeof data.error.message === 'string' ? data.error.message.trim() : ''
+        if (message) return message
+    }
+    const message = typeof data.message === 'string' ? data.message.trim() : ''
+    return message
+}
+
+async function pollGrokTask(
+    requestId: string,
+    userId: string,
+): Promise<PollResult> {
+    const logPrefix = '[Grok Query]'
+
+    try {
+        const config = await getProviderConfig(userId, 'grok')
+        const baseUrl = (config.baseUrl || 'https://api.x.ai/v1').replace(/\/+$/, '')
+        const response = await fetch(`${baseUrl}/videos/${encodeURIComponent(requestId)}`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${config.apiKey}`,
+            },
+        })
+
+        const raw = await response.text().catch(() => '')
+        let data: GrokVideoStatusResponse = {}
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw) as unknown
+                if (!parsed || typeof parsed !== 'object') {
+                    throw new Error('GROK_TASK_QUERY_RESPONSE_INVALID')
+                }
+                data = parsed as GrokVideoStatusResponse
+            } catch {
+                throw new Error('GROK_TASK_QUERY_RESPONSE_INVALID_JSON')
+            }
+        }
+
+        if (!response.ok) {
+            return {
+                status: 'failed',
+                error: `Grok: ${readGrokResponseError(data) || `query failed ${response.status}`}`,
+            }
+        }
+
+        const status = (typeof data.status === 'string' ? data.status : '').trim().toLowerCase()
+        const videoUrl = typeof data.video?.url === 'string' ? data.video.url.trim() : ''
+
+        if (status === 'failed' || status === 'error' || status === 'expired' || status === 'cancelled' || status === 'canceled') {
+            return {
+                status: 'failed',
+                error: `Grok: ${readGrokResponseError(data) || `task failed: ${status || requestId}`}`,
+            }
+        }
+
+        if (status === 'completed' || status === 'succeeded' || status === 'success' || status === 'done' || (!status && videoUrl)) {
+            if (!videoUrl) {
+                return {
+                    status: 'failed',
+                    error: 'Grok: task completed but video URL missing',
+                }
+            }
+            return {
+                status: 'completed',
+                videoUrl,
+                resultUrl: videoUrl,
+            }
+        }
+
+        return { status: 'pending' }
+    } catch (error: unknown) {
+        const errorMessage = getErrorMessage(error)
+        _ulogError(`${logPrefix} task_id=${requestId} 异常:`, error)
+        return {
+            status: 'failed',
+            error: `Grok: ${errorMessage}`,
+        }
+    }
+}
+
 /**
  * 查询 Vidu 任务状态
  */
@@ -950,7 +1059,7 @@ async function queryViduTaskStatus(
  * 创建标准格式的 externalId
  */
 export function formatExternalId(
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW',
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'GROK',
     type: 'VIDEO' | 'IMAGE' | 'BATCH',
     requestId: string,
     endpoint?: string,

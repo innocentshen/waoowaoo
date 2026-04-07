@@ -284,6 +284,59 @@ describe('generator-api gateway routing', () => {
     expect(result).toEqual({ success: true, videoUrl: 'siliconflow-video' })
   })
 
+  it('forces grok image generation onto the official provider path', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'grok',
+      modelId: 'grok-imagine-image',
+      modelKey: 'grok::grok-imagine-image',
+      mediaType: 'image',
+    })
+    getProviderConfigMock.mockResolvedValueOnce({
+      id: 'grok',
+      name: 'xAI Grok',
+      apiKey: 'grok-key',
+      baseUrl: 'https://api.x.ai/v1',
+      gatewayRoute: 'openai-compat',
+      apiMode: undefined,
+    })
+    resolveModelGatewayRouteMock.mockReturnValueOnce('openai-compat')
+
+    const result = await generateImage('user-1', 'grok::grok-imagine-image', 'draw cat')
+
+    expect(createImageGeneratorMock).toHaveBeenCalledWith('grok', 'grok-imagine-image')
+    expect(generateImageViaOpenAICompatMock).not.toHaveBeenCalled()
+    expect(result).toEqual({ success: true, imageUrl: 'official-image' })
+  })
+
+  it('forces grok video generation onto the official provider path', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'grok',
+      modelId: 'grok-imagine-video',
+      modelKey: 'grok::grok-imagine-video',
+      mediaType: 'video',
+    })
+    getProviderConfigMock.mockResolvedValueOnce({
+      id: 'grok',
+      name: 'xAI Grok',
+      apiKey: 'grok-key',
+      baseUrl: 'https://api.x.ai/v1',
+      gatewayRoute: 'openai-compat',
+      apiMode: undefined,
+    })
+    resolveModelGatewayRouteMock.mockReturnValueOnce('openai-compat')
+
+    const result = await generateVideo(
+      'user-1',
+      'grok::grok-imagine-video',
+      'https://example.com/source.png',
+      { prompt: 'animate cat' },
+    )
+
+    expect(createVideoGeneratorMock).toHaveBeenCalledWith('grok')
+    expect(generateVideoViaOpenAICompatMock).not.toHaveBeenCalled()
+    expect(result).toEqual({ success: true, videoUrl: 'official-video' })
+  })
+
   it('routes bailian audio generation to official provider adapter', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'bailian',

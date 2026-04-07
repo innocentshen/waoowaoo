@@ -20,6 +20,7 @@ export interface TestProviderResult {
 type PresetProviderType = 'ark' | 'google' | 'openrouter' | 'minimax' | 'fal' | 'vidu'
   | 'bailian'
   | 'siliconflow'
+  | 'grok'
 type CompatibleProviderType = 'openai-compatible' | 'gemini-compatible'
 
 type TestProviderPayload = {
@@ -871,6 +872,8 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
       return testBailianProvider(apiKey)
     case 'siliconflow':
       return testSiliconFlowProvider(apiKey)
+    case 'grok':
+      return testCompatibleProvider('https://api.x.ai/v1', apiKey, llmModel || 'grok-4')
     default:
       return {
         success: false,

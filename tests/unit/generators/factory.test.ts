@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createAudioGenerator, createImageGenerator, createVideoGenerator } from '@/lib/generators/factory'
+import { GrokImageGenerator, GrokVideoGenerator } from '@/lib/generators/grok'
 import { GoogleVeoVideoGenerator } from '@/lib/generators/video/google'
 import { OpenAICompatibleVideoGenerator } from '@/lib/generators/video/openai-compatible'
 import { BailianAudioGenerator, BailianImageGenerator, BailianVideoGenerator, SiliconFlowAudioGenerator } from '@/lib/generators/official'
@@ -18,5 +19,10 @@ describe('generator factory', () => {
 
   it('routes siliconflow audio provider to official generator', () => {
     expect(createAudioGenerator('siliconflow')).toBeInstanceOf(SiliconFlowAudioGenerator)
+  })
+
+  it('routes grok image/video providers to grok generators', () => {
+    expect(createImageGenerator('grok')).toBeInstanceOf(GrokImageGenerator)
+    expect(createVideoGenerator('grok')).toBeInstanceOf(GrokVideoGenerator)
   })
 })

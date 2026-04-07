@@ -50,4 +50,14 @@ describe('async poll externalId contract', () => {
     expect(parsed.type).toBe('IMAGE')
     expect(parsed.requestId).toBe('task_456')
   })
+
+  it('parses and formats GROK externalId', () => {
+    const externalId = formatExternalId('GROK', 'VIDEO', 'req_grok_123')
+    expect(externalId).toBe('GROK:VIDEO:req_grok_123')
+
+    const parsed = parseExternalId(externalId)
+    expect(parsed.provider).toBe('GROK')
+    expect(parsed.type).toBe('VIDEO')
+    expect(parsed.requestId).toBe('req_grok_123')
+  })
 })
