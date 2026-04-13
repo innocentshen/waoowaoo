@@ -1093,6 +1093,50 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
 
+  it('migrates legacy qwen providers and model keys during GET', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    prismaMock.userPreference.findUnique.mockResolvedValue({
+      customProviders: JSON.stringify([
+        { id: 'qwen', name: 'Qwen', apiKey: 'enc:legacy-key' },
+      ]),
+      customModels: JSON.stringify([
+        {
+          type: 'llm',
+          provider: 'qwen',
+          modelId: 'qwen3.5-flash',
+          modelKey: 'qwen::qwen3.5-flash',
+          name: 'Qwen 3.5 Flash',
+        },
+      ]),
+      analysisModel: 'qwen::qwen3.5-flash',
+    })
+    const route = await import('@/app/api/user/api-config/route')
+
+    const req = buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'GET',
+    })
+
+    const res = await route.GET(req, routeContext)
+    expect(res.status).toBe(200)
+
+    const json = await res.json() as {
+      providers?: Array<{ id: string; apiKey?: string }>
+      models?: Array<{ modelKey: string }>
+      defaultModels?: { analysisModel?: string }
+    }
+
+    expect(json.providers?.some((provider) => provider.id === 'qwen')).toBe(false)
+    expect(json.providers?.find((provider) => provider.id === 'bailian')).toMatchObject({
+      id: 'bailian',
+      apiKey: 'legacy-key',
+    })
+    expect(json.models?.some((model) => model.modelKey === 'bailian::qwen3.5-flash')).toBe(true)
+    expect(json.models?.some((model) => model.modelKey === 'qwen::qwen3.5-flash')).toBe(false)
+    expect(json.defaultModels?.analysisModel).toBe('bailian::qwen3.5-flash')
+  })
+
   it('rejects compatMediaTemplate on non-openai-compatible media model', async () => {
     installAuthMocks()
     mockAuthenticated('user-1')

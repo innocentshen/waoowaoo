@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { logError as _ulogError } from '@/lib/logging/core'
 import type { VideoPanel } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 
@@ -28,74 +28,61 @@ export function useVideoPromptState({
   const [savingPrompts, setSavingPrompts] = useState<Set<string>>(new Set())
   const [dirtyPrompts, setDirtyPrompts] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    const panelKeySet = new Set<string>()
+  const externalPromptMap = useMemo(() => {
+    const next = new Map<string, string>()
     for (const panel of allPanels) {
-      panelKeySet.add(`${panel.storyboardId}-${panel.panelIndex}`)
+      const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
+      next.set(
+        buildPromptStateKey(panelKey, 'videoPrompt'),
+        panel.textPanel?.video_prompt || '',
+      )
+      next.set(
+        buildPromptStateKey(panelKey, 'firstLastFramePrompt'),
+        panel.firstLastFramePrompt || '',
+      )
     }
-
-    setPanelPrompts((prev) => {
-      const next = new Map(prev)
-      for (const panel of allPanels) {
-        const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
-        const promptEntries: Array<[PromptField, string]> = [
-          ['videoPrompt', panel.textPanel?.video_prompt || ''],
-          ['firstLastFramePrompt', panel.firstLastFramePrompt || ''],
-        ]
-        for (const [field, value] of promptEntries) {
-          const stateKey = buildPromptStateKey(panelKey, field)
-          if (dirtyPrompts.has(stateKey)) continue
-          next.set(stateKey, value)
-        }
-      }
-      for (const key of next.keys()) {
-        const separatorIndex = key.indexOf(':')
-        const panelKey = separatorIndex >= 0 ? key.slice(separatorIndex + 1) : key
-        if (!panelKeySet.has(panelKey)) {
-          next.delete(key)
-        }
-      }
-      return next
-    })
-  }, [allPanels, dirtyPrompts])
+    return next
+  }, [allPanels])
 
   useEffect(() => {
-    setDirtyPrompts((prev) => {
-      if (prev.size === 0) return prev
-      const next = new Set<string>()
-      for (const key of prev) {
-        if (panelPrompts.has(key)) next.add(key)
+    setPanelPrompts((previous) => {
+      let next: Map<string, string> | null = null
+
+      for (const [stateKey, value] of externalPromptMap) {
+        if (dirtyPrompts.has(stateKey)) continue
+        if (previous.get(stateKey) === value) continue
+        if (!next) next = new Map(previous)
+        next.set(stateKey, value)
       }
-      return next.size === prev.size ? prev : next
+
+      for (const stateKey of previous.keys()) {
+        if (externalPromptMap.has(stateKey)) continue
+        if (!next) next = new Map(previous)
+        next.delete(stateKey)
+      }
+
+      return next ?? previous
     })
-  }, [panelPrompts])
+  }, [dirtyPrompts, externalPromptMap])
 
   useEffect(() => {
-    setDirtyPrompts((prev) => {
-      if (prev.size === 0) return prev
-      const externalPromptMap = new Map<string, string>()
-      for (const panel of allPanels) {
-        const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
-        externalPromptMap.set(
-          buildPromptStateKey(panelKey, 'videoPrompt'),
-          panel.textPanel?.video_prompt || '',
-        )
-        externalPromptMap.set(
-          buildPromptStateKey(panelKey, 'firstLastFramePrompt'),
-          panel.firstLastFramePrompt || '',
-        )
-      }
-      const next = new Set(prev)
-      for (const key of prev) {
-        const externalPrompt = externalPromptMap.get(key)
-        const localPrompt = panelPrompts.get(key)
-        if (externalPrompt === undefined || localPrompt === undefined || externalPrompt === localPrompt) {
-          next.delete(key)
+    setDirtyPrompts((previous) => {
+      if (previous.size === 0) return previous
+
+      let next: Set<string> | null = null
+      for (const stateKey of previous) {
+        const externalPrompt = externalPromptMap.get(stateKey)
+        const localPrompt = panelPrompts.get(stateKey)
+        if (externalPrompt !== undefined && localPrompt !== undefined && externalPrompt !== localPrompt) {
+          continue
         }
+        if (!next) next = new Set(previous)
+        next.delete(stateKey)
       }
-      return next.size === prev.size ? prev : next
+
+      return next ?? previous
     })
-  }, [allPanels, panelPrompts])
+  }, [externalPromptMap, panelPrompts])
 
   const getLocalPrompt = useCallback((
     panelKey: string,
@@ -116,11 +103,17 @@ export function useVideoPromptState({
   ) => {
     const stateKey = buildPromptStateKey(panelKey, field)
     setPanelPrompts((prev) => {
+      if (prev.get(stateKey) === value) return prev
       const next = new Map(prev)
       next.set(stateKey, value)
       return next
     })
-    setDirtyPrompts((prev) => new Set(prev).add(stateKey))
+    setDirtyPrompts((prev) => {
+      if (prev.has(stateKey)) return prev
+      const next = new Set(prev)
+      next.add(stateKey)
+      return next
+    })
   }, [])
 
   const savePrompt = useCallback(async (

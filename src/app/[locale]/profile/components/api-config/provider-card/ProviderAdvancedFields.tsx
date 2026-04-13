@@ -80,6 +80,10 @@ function shouldShowDefaultTabs(providerId: string): boolean {
   return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible'
 }
 
+function shouldShowProbeBeforeAdd(providerId: string, type: ProviderCardModelType | null): boolean {
+  return getProviderKey(providerId) === 'openai-compatible' && type === 'llm'
+}
+
 export function getVisibleModelTypesForProvider(
   providerId: string,
   groupedModels: Partial<Record<ProviderCardModelType, CustomModel[]>>,
@@ -163,6 +167,8 @@ export function ProviderAdvancedFields({
   const defaultAddType: ProviderCardModelType = providerKey === 'openrouter' ? 'llm' : 'image'
   const useTabbedLayout = state.hasModels || shouldShowDefaultTabs(provider.id)
   const shouldShowVideoHint = shouldShowOpenAICompatVideoHint(provider.id, currentType)
+  const shouldShowProbeToggle = shouldShowProbeBeforeAdd(provider.id, currentType)
+  const shouldShowCollapsedProbeToggle = shouldShowProbeBeforeAdd(provider.id, state.showAddForm)
 
   return useTabbedLayout ? (
     <div className="space-y-2.5 p-3">
@@ -240,6 +246,18 @@ export function ProviderAdvancedFields({
             <p className="mt-2 text-xs text-[var(--glass-text-tertiary)]">
               {t('openaiCompatVideoOnlyHint')}
             </p>
+          )}
+          {shouldShowProbeToggle && (
+            <ModelProbeToggle
+              enabled={state.newModel.probeBeforeAdd !== false}
+              label={t('probeBeforeAdd')}
+              hint={t('probeBeforeAddHint')}
+              onToggle={() =>
+                state.setNewModel({
+                  ...state.newModel,
+                  probeBeforeAdd: state.newModel.probeBeforeAdd === false,
+                })}
+            />
           )}
           {currentType === 'video' && provider.id === 'ark' && (
             <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-[var(--glass-bg-muted)] px-2 py-2">
@@ -336,8 +354,52 @@ export function ProviderAdvancedFields({
               {t('openaiCompatVideoOnlyHint')}
             </p>
           )}
+          {shouldShowCollapsedProbeToggle && (
+            <ModelProbeToggle
+              enabled={state.newModel.probeBeforeAdd !== false}
+              label={t('probeBeforeAdd')}
+              hint={t('probeBeforeAddHint')}
+              onToggle={() =>
+                state.setNewModel({
+                  ...state.newModel,
+                  probeBeforeAdd: state.newModel.probeBeforeAdd === false,
+                })}
+            />
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function ModelProbeToggle({
+  enabled,
+  label,
+  hint,
+  onToggle,
+}: {
+  enabled: boolean
+  label: string
+  hint: string
+  onToggle: () => void
+}) {
+  return (
+    <div className="mt-2.5 flex items-start gap-2 rounded-lg bg-[var(--glass-bg-muted)] px-2 py-2">
+      <button
+        onClick={onToggle}
+        className="glass-check-mini mt-0.5"
+        data-active={enabled}
+        type="button"
+        aria-pressed={enabled}
+      >
+        {enabled && (
+          <AppIcon name="checkSm" className="h-2.5 w-2.5 text-white" />
+        )}
+      </button>
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{label}</div>
+        <div className="mt-0.5 text-[11px] text-[var(--glass-text-tertiary)]">{hint}</div>
+      </div>
     </div>
   )
 }

@@ -13,7 +13,76 @@ export interface VideoModelOption {
   videoPricingTiers?: VideoPricingTier[]
 }
 
-export type VideoGenerationMode = 'normal' | 'firstlastframe'
+export type VideoGenerationMode = 'normal' | 'firstlastframe' | 'edit' | 'extend'
+export type VideoOperationMode = Extract<VideoGenerationMode, 'edit' | 'extend'>
+
+export interface VideoCandidateMeta {
+  sourceCandidateId?: string | null
+  sourceGenerationMode?: VideoGenerationMode | null
+  extendDuration?: number | null
+}
+
+export interface VideoReferenceCharacter {
+  name: string
+  appearance?: string
+}
+
+export interface VideoReferenceCharacterOption extends VideoReferenceCharacter {
+  key: string
+  label: string
+  imageUrl?: string | null
+  description?: string | null
+}
+
+export interface VideoReferenceNamedOption {
+  key: string
+  name: string
+  imageUrl?: string | null
+  description?: string | null
+}
+
+export interface VideoReferenceOptions {
+  characters: VideoReferenceCharacterOption[]
+  locations: VideoReferenceNamedOption[]
+  props: VideoReferenceNamedOption[]
+}
+
+export interface VideoCandidate {
+  id: string
+  videoUrl: string
+  generationMode: VideoGenerationMode
+  createdAt: string
+  model?: string | null
+  prompt?: string | null
+  meta?: VideoCandidateMeta | null
+  isSelected: boolean
+}
+
+export interface VideoCandidateViewerPanel {
+  panelId?: string
+  panelKey: string
+  panelNumber: number
+  storyboardId: string
+  panelIndex: number
+  imageUrl?: string | null
+  imagePrompt?: string | null
+  duration?: number | null
+  prompt: string
+  promptField: 'videoPrompt' | 'firstLastFramePrompt'
+  defaultVideoModel: string
+  isLinked: boolean
+  isLastFrame: boolean
+  isSavingPrompt?: boolean
+  referenceSelection?: VideoReferenceSelection
+  referenceOptions?: VideoReferenceOptions
+  nextPanel?: {
+    panelId?: string
+    panelKey: string
+    storyboardId: string
+    panelIndex: number
+  } | null
+  items: VideoCandidate[]
+}
 
 export interface TextPanel {
   panel_number: number
@@ -22,6 +91,8 @@ export interface TextPanel {
   description: string
   characters?: Array<string | { name?: string; appearance?: string }>
   location?: string
+  locations?: string[]
+  props?: string[]
   text_segment?: string
   duration?: number
   video_prompt?: string
@@ -38,6 +109,7 @@ export interface Panel {
   description?: string | null
   characters?: string | null
   location?: string | null
+  props?: string | null
   textSegment?: string | null
   srtSegment?: string | null  // SRT 原文片段
   duration?: number | null
@@ -46,6 +118,7 @@ export interface Panel {
   videoPrompt?: string | null
   firstLastFramePrompt?: string | null
   videoUrl?: string | null
+  videoCandidates?: VideoCandidate[] | null
   videoGenerationMode?: VideoGenerationMode | null
   videoModel?: string | null
   linkedToNextPanel?: boolean | null
@@ -86,6 +159,7 @@ export interface VideoPanel {
   firstLastFramePrompt?: string
   imageUrl?: string
   videoUrl?: string
+  videoCandidates?: VideoCandidate[]
   videoGenerationMode?: VideoGenerationMode
   videoTaskRunning?: boolean
   videoErrorMessage?: string  // 视频生成错误消息
@@ -118,10 +192,28 @@ export interface FirstLastFrameParams {
   customPrompt?: string
 }
 
+export interface VideoOperationRequest {
+  mode: VideoOperationMode
+  sourceCandidateId: string
+  instruction: string
+  extendDuration?: number
+}
+
+export interface VideoReferenceSelection {
+  includeCharacters?: boolean
+  includeLocation?: boolean
+  includeProps?: boolean
+  characters?: VideoReferenceCharacter[]
+  locations?: string[]
+  props?: string[]
+}
+
 export type VideoGenerationOptionValue = string | number | boolean
 export type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
 
 export interface BatchVideoGenerationParams {
   videoModel: string
+  count?: number
   generationOptions?: VideoGenerationOptions
+  referenceSelection?: VideoReferenceSelection
 }

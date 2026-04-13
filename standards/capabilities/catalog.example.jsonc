@@ -5,12 +5,16 @@
     "modelId": "example-video-model",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": ["16:9", "9:16"],
         "durationOptions": [5, 10, 15],
         "fpsOptions": [24, 30],
         "resolutionOptions": ["720p", "1080p"],
         "firstlastframe": true,
         "supportGenerateAudio": true,
         "fieldI18n": {
+          "aspectRatio": {
+            "labelKey": "video.capability.aspectRatio"
+          },
           "duration": {
             "labelKey": "video.capability.duration",
             "unitKey": "video.unit.second"
@@ -32,8 +36,12 @@
     "modelId": "example-image-model",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": ["1:1", "16:9"],
         "resolutionOptions": ["2K", "4K"],
         "fieldI18n": {
+          "aspectRatio": {
+            "labelKey": "image.capability.aspectRatio"
+          },
           "resolution": {
             "labelKey": "image.capability.resolution"
           }

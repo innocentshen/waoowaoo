@@ -16,11 +16,11 @@ import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
  */
 
 import { Character, CharacterAppearance } from '@/types/project'
-import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import CharacterCard from './CharacterCard'
 import CharacterProfileCard from './CharacterProfileCard'
 import { parseProfileData } from '@/types/character-profile'
 import { AppIcon } from '@/components/ui/icons'
+import { useAssetStageProjectAssets } from './AssetStageProjectAssetsContext'
 
 interface CharacterSectionProps {
     // 🔥 V6.5 删除：characters prop - 现在内部直接订阅
@@ -31,6 +31,9 @@ interface CharacterSectionProps {
     onClearTaskKey: (key: string) => void
     onRegisterTransientTaskKey: (key: string) => void
     isAnalyzingAssets: boolean
+    onGenerateAll: () => void
+    generateAllButtonLabel: string
+    isGenerateAllDisabled?: boolean
     // 回调函数
     onAddCharacter: () => void
     onDeleteCharacter: (characterId: string) => void
@@ -75,6 +78,9 @@ export default function CharacterSection({
     onClearTaskKey,
     onRegisterTransientTaskKey,
     isAnalyzingAssets,
+    onGenerateAll,
+    generateAllButtonLabel,
+    isGenerateAllDisabled = false,
     onAddCharacter,
     onDeleteCharacter,
     onDeleteAppearance,
@@ -115,8 +121,8 @@ export default function CharacterSection({
         })
         : null
 
-    const { data: assets } = useProjectAssets(projectId)
-    const allCharacters: Character[] = useMemo(() => assets?.characters ?? [], [assets?.characters])
+    const assets = useAssetStageProjectAssets(projectId)
+    const allCharacters: Character[] = useMemo(() => assets.characters, [assets.characters])
     // 🔥 V7：排除待确认角色，避免同一角色在待确认区与已确认网格中重复出现
     const unconfirmedIds = useMemo(
         () => new Set(unconfirmedCharacters.map((c) => c.id)),
@@ -205,12 +211,22 @@ export default function CharacterSection({
                         {t("stage.counts", { characterCount: characters.length, appearanceCount: totalAppearances })}
                     </span>
                 </div>
-                <button
-                    onClick={onAddCharacter}
-                    className="glass-btn-base glass-btn-primary flex items-center gap-2 px-4 py-2 font-medium"
-                >
-                    + {t("character.add")}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={onGenerateAll}
+                        disabled={isGenerateAllDisabled}
+                        className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <AppIcon name="sparkles" className="h-4 w-4" />
+                        <span>{generateAllButtonLabel}</span>
+                    </button>
+                    <button
+                        onClick={onAddCharacter}
+                        className="glass-btn-base glass-btn-primary flex items-center gap-2 px-4 py-2 font-medium"
+                    >
+                        + {t("character.add")}
+                    </button>
+                </div>
             </div>
 
             {/* 🔥 V7：待确认角色档案 - 内嵌引导横幅 */}

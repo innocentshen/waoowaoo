@@ -4,6 +4,8 @@ interface VideoModelCapabilityCarrier {
   capabilities?: ModelCapabilities
 }
 
+export type SupportedVideoGenerationMode = 'normal' | 'firstlastframe' | 'edit' | 'extend'
+
 function readGenerationModeOptions(model: VideoModelCapabilityCarrier): string[] {
   const options = model.capabilities?.video?.generationModeOptions
   if (!Array.isArray(options)) return []
@@ -20,6 +22,24 @@ export function isFirstLastFrameOnlyModel(model: VideoModelCapabilityCarrier): b
   return generationModeOptions.every((mode) => mode === 'firstlastframe')
 }
 
+export function supportsVideoGenerationMode(
+  model: VideoModelCapabilityCarrier,
+  mode: SupportedVideoGenerationMode,
+): boolean {
+  const generationModeOptions = readGenerationModeOptions(model)
+  if (generationModeOptions.length === 0) {
+    return mode === 'normal'
+  }
+  return generationModeOptions.includes(mode)
+}
+
 export function filterNormalVideoModelOptions<T extends VideoModelCapabilityCarrier>(models: T[]): T[] {
-  return models.filter((model) => !isFirstLastFrameOnlyModel(model))
+  return filterVideoModelOptionsByGenerationMode(models, 'normal')
+}
+
+export function filterVideoModelOptionsByGenerationMode<T extends VideoModelCapabilityCarrier>(
+  models: T[],
+  mode: SupportedVideoGenerationMode,
+): T[] {
+  return models.filter((model) => supportsVideoGenerationMode(model, mode))
 }

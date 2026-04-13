@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
@@ -15,6 +16,7 @@ import {
 } from '@/lib/model-capabilities/lookup'
 import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
+import { normalizeVideoGenerationCount } from '@/lib/video-generation/count'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -24,7 +26,6 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
   if (!isRecord(value)) return {}
   const selections: Record<string, CapabilityValue> = {}
   for (const [field, raw] of Object.entries(value)) {
-    if (field === 'aspectRatio') continue
     if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
       selections[field] = raw
     }
@@ -32,8 +33,14 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
   return selections
 }
 
-function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' {
+type VideoGenerationMode = 'normal' | 'firstlastframe' | 'edit' | 'extend'
+
+function resolveVideoGenerationMode(payload: unknown): VideoGenerationMode {
   if (!isRecord(payload)) return 'normal'
+  const videoOperation = isRecord(payload.videoOperation) ? payload.videoOperation : null
+  if (videoOperation?.mode === 'edit' || videoOperation?.mode === 'extend') {
+    return videoOperation.mode
+  }
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
 }
 
@@ -66,6 +73,80 @@ function requireVideoModelKeyFromPayload(payload: unknown): string {
     })
   }
   return payload.videoModel
+}
+
+function normalizeVideoReferenceCharacters(value: unknown): Array<{ name: string; appearance?: string }> {
+  if (!Array.isArray(value)) return []
+
+  const normalized: Array<{ name: string; appearance?: string }> = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const name = typeof item.name === 'string' ? item.name.trim() : ''
+    if (!name) continue
+    const appearance = typeof item.appearance === 'string' ? item.appearance.trim() : ''
+    const key = `${name.toLowerCase()}::${appearance.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    normalized.push(appearance ? { name, appearance } : { name })
+  }
+
+  return normalized
+}
+
+function normalizeVideoReferenceNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+
+  const normalized: string[] = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    normalized.push(trimmed)
+  }
+
+  return normalized
+}
+
+function normalizeVideoReferenceSelection(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined
+
+  const characters = normalizeVideoReferenceCharacters(value.characters)
+  const locations = normalizeVideoReferenceNames(value.locations)
+  const props = normalizeVideoReferenceNames(value.props)
+
+  const includeCharacters = value.includeCharacters === true || characters.length > 0
+  const includeLocation = value.includeLocation === true || locations.length > 0
+  const includeProps = value.includeProps === true || props.length > 0
+  if (!includeCharacters && !includeLocation && !includeProps) return undefined
+
+  return {
+    ...(includeCharacters ? { includeCharacters: true } : {}),
+    ...(includeLocation ? { includeLocation: true } : {}),
+    ...(includeProps ? { includeProps: true } : {}),
+    ...(characters.length > 0 ? { characters } : {}),
+    ...(locations.length > 0 ? { locations } : {}),
+    ...(props.length > 0 ? { props } : {}),
+  }
+}
+
+function normalizeVideoPayload(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {}
+
+  const next: Record<string, unknown> = { ...value }
+  const referenceSelection = normalizeVideoReferenceSelection(value.referenceSelection)
+  if (referenceSelection) {
+    next.referenceSelection = referenceSelection
+  } else {
+    delete next.referenceSelection
+  }
+  return next
 }
 
 function validateFirstLastFrameModel(input: unknown) {
@@ -138,7 +219,9 @@ async function validateVideoCapabilityCombination(input: {
     model: modelKey,
     selections: {
       ...resolvedOptions,
-      ...(isSeedance2Model(modelKey) ? { containsVideoInput: false } : {}),
+      ...(isSeedance2Model(modelKey)
+        ? { containsVideoInput: runtimeSelections.generationMode === 'edit' || runtimeSelections.generationMode === 'extend' }
+        : {}),
     },
   })
   if (resolution.status === 'missing_capability_match') {
@@ -181,6 +264,86 @@ function buildVideoPanelBillingInfoOrThrow(payload: unknown) {
   }
 }
 
+function validateVideoOperation(input: unknown) {
+  if (input === undefined || input === null) return
+  if (!isRecord(input)) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_INVALID',
+      field: 'videoOperation',
+    })
+  }
+
+  const mode = input.mode
+  if (mode !== 'edit' && mode !== 'extend') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_MODE_INVALID',
+      field: 'videoOperation.mode',
+    })
+  }
+
+  const sourceCandidateId = typeof input.sourceCandidateId === 'string' ? input.sourceCandidateId.trim() : ''
+  if (!sourceCandidateId) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_SOURCE_CANDIDATE_REQUIRED',
+      field: 'videoOperation.sourceCandidateId',
+    })
+  }
+
+  const instruction = typeof input.instruction === 'string' ? input.instruction.trim() : ''
+  if (!instruction) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_INSTRUCTION_REQUIRED',
+      field: 'videoOperation.instruction',
+    })
+  }
+
+  if (mode === 'edit' && input.extendDuration !== undefined) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_EXTEND_DURATION_UNEXPECTED',
+      field: 'videoOperation.extendDuration',
+    })
+  }
+
+  if (
+    mode === 'extend'
+    && (typeof input.extendDuration !== 'number' || !Number.isFinite(input.extendDuration) || input.extendDuration <= 0)
+  ) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_EXTEND_DURATION_REQUIRED',
+      field: 'videoOperation.extendDuration',
+    })
+  }
+}
+
+function buildSingleVideoTaskPayload(
+  payload: Record<string, unknown>,
+  params: {
+    requestSeed: string
+    requestedCount: number
+    sequence: number
+  },
+) {
+  return {
+    ...payload,
+    count: 1,
+    requestedCount: params.requestedCount,
+    candidateBatchId: params.requestSeed,
+    candidateSequence: params.sequence,
+  }
+}
+
+function buildVideoTaskDedupeKey(
+  panelId: string,
+  params: {
+    requestSeed: string
+    requestedCount: number
+    sequence: number
+  },
+) {
+  if (params.requestedCount <= 1) return `video_panel:${panelId}`
+  return `video_panel:${panelId}:${params.requestSeed}:${params.sequence}`
+}
+
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -191,12 +354,27 @@ export const POST = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
 
-  const body = await request.json()
+  const body = normalizeVideoPayload(await request.json())
   requireVideoModelKeyFromPayload(body)
   const locale = resolveRequiredTaskLocale(request, body)
   const isBatch = body?.all === true
+  const requestedCount = normalizeVideoGenerationCount(body?.count)
+  const requestSeed = getRequestId(request) || randomUUID()
 
   validateFirstLastFrameModel(body?.firstLastFrame)
+  validateVideoOperation(body?.videoOperation)
+  if (body?.firstLastFrame && body?.videoOperation) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_WITH_FIRSTLASTFRAME_UNSUPPORTED',
+      field: 'videoOperation',
+    })
+  }
+  if (body?.videoOperation && requestedCount > 1) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'VIDEO_OPERATION_BATCH_UNSUPPORTED',
+      field: 'count',
+    })
+  }
   await validateVideoCapabilityCombination({
     payload: body,
     projectId,
@@ -204,7 +382,13 @@ export const POST = apiHandler(async (
   })
 
   if (isBatch) {
-    const episodeId = body?.episodeId
+    if (body?.videoOperation) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'VIDEO_OPERATION_ALL_UNSUPPORTED',
+        field: 'videoOperation',
+      })
+    }
+    const episodeId = typeof body?.episodeId === 'string' ? body.episodeId : ''
     if (!episodeId) {
       throw new ApiError('INVALID_PARAMS')
     }
@@ -225,27 +409,50 @@ export const POST = apiHandler(async (
       return NextResponse.json({ tasks: [], total: 0 })
     }
 
+    const panelInputs = await Promise.all(
+      panels.map(async (panel) => ({
+        panelId: panel.id,
+        hasOutputAtStart: await hasPanelVideoOutput(panel.id),
+      })),
+    )
+
     const results = await Promise.all(
-      panels.map(async (panel) =>
-        submitTask({
-          userId: session.user.id,
-          locale,
-          requestId: getRequestId(request),
-          projectId,
-          episodeId,
-          type: TASK_TYPE.VIDEO_PANEL,
-          targetType: 'NovelPromotionPanel',
-          targetId: panel.id,
-          payload: withTaskUiPayload(body, {
-            hasOutputAtStart: await hasPanelVideoOutput(panel.id),
+      panelInputs.flatMap((panel) =>
+        Array.from({ length: requestedCount }, (_unused, index) =>
+          submitTask({
+            userId: session.user.id,
+            locale,
+            requestId: getRequestId(request),
+            projectId,
+            episodeId,
+            type: TASK_TYPE.VIDEO_PANEL,
+            targetType: 'NovelPromotionPanel',
+            targetId: panel.panelId,
+            payload: withTaskUiPayload(
+              buildSingleVideoTaskPayload(body as Record<string, unknown>, {
+                requestSeed,
+                requestedCount,
+                sequence: index,
+              }),
+              {
+                hasOutputAtStart: panel.hasOutputAtStart,
+              },
+            ),
+            dedupeKey: buildVideoTaskDedupeKey(panel.panelId, {
+              requestSeed,
+              requestedCount,
+              sequence: index,
+            }),
+            billingInfo: buildVideoPanelBillingInfoOrThrow({
+              ...(body as Record<string, unknown>),
+              count: 1,
+            }),
           }),
-          dedupeKey: `video_panel:${panel.id}`,
-          billingInfo: buildVideoPanelBillingInfoOrThrow(body),
-        }),
+        ),
       ),
     )
 
-    return NextResponse.json({ tasks: results, total: panels.length })
+    return NextResponse.json({ tasks: results, total: panels.length * requestedCount })
   }
 
   const storyboardId = body?.storyboardId
@@ -263,20 +470,44 @@ export const POST = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
 
-  const result = await submitTask({
-    userId: session.user.id,
-    locale,
-    requestId: getRequestId(request),
-    projectId,
-    type: TASK_TYPE.VIDEO_PANEL,
-    targetType: 'NovelPromotionPanel',
-    targetId: panel.id,
-    payload: withTaskUiPayload(body, {
-      hasOutputAtStart: await hasPanelVideoOutput(panel.id),
-    }),
-    dedupeKey: `video_panel:${panel.id}`,
-    billingInfo: buildVideoPanelBillingInfoOrThrow(body),
-  })
+  const hasOutputAtStart = await hasPanelVideoOutput(panel.id)
 
-  return NextResponse.json(result)
+  const results = await Promise.all(
+    Array.from({ length: requestedCount }, (_unused, index) =>
+      submitTask({
+        userId: session.user.id,
+        locale,
+        requestId: getRequestId(request),
+        projectId,
+        type: TASK_TYPE.VIDEO_PANEL,
+        targetType: 'NovelPromotionPanel',
+        targetId: panel.id,
+        payload: withTaskUiPayload(
+          buildSingleVideoTaskPayload(body as Record<string, unknown>, {
+            requestSeed,
+            requestedCount,
+            sequence: index,
+          }),
+          {
+            hasOutputAtStart,
+          },
+        ),
+        dedupeKey: buildVideoTaskDedupeKey(panel.id, {
+          requestSeed,
+          requestedCount,
+          sequence: index,
+        }),
+        billingInfo: buildVideoPanelBillingInfoOrThrow({
+          ...(body as Record<string, unknown>),
+          count: 1,
+        }),
+      }),
+    ),
+  )
+
+  return NextResponse.json(
+    requestedCount === 1
+      ? results[0]
+      : { tasks: results, total: requestedCount },
+  )
 })

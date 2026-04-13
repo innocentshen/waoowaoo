@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from '@/lib/llm/types'
+
 export type ModelGatewayRoute = 'official' | 'openai-compat'
 
 export type CompatibleProviderKey = 'openai-compatible'
@@ -29,6 +31,7 @@ export interface OpenAICompatVideoRequest {
   providerId: string
   modelId?: string
   imageUrl: string
+  referenceImages?: string[]
   prompt: string
   options?: Record<string, unknown>
   profile: OpenAICompatVideoProfile
@@ -42,4 +45,6 @@ export interface OpenAICompatChatRequest {
   modelId: string
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
   temperature: number
+  reasoning?: boolean
+  reasoningEffort?: ReasoningEffort
 }

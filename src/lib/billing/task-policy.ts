@@ -151,7 +151,10 @@ function buildImageTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
 
 function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
   const firstLastFramePayload = toRecord(payload?.firstLastFrame)
-  const generationMode = Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal'
+  const videoOperation = toRecord(payload?.videoOperation)
+  const generationMode = videoOperation?.mode === 'edit' || videoOperation?.mode === 'extend'
+    ? videoOperation.mode
+    : (Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal')
   const model = pickFirstString([
     payload?.videoModel,
     payload?.modelId,
@@ -173,7 +176,7 @@ function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
     ...(aspectRatio ? { aspectRatio } : {}),
     generationMode,
     ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
-    containsVideoInput: false,
+    containsVideoInput: generationMode === 'edit' || generationMode === 'extend',
   }
   let maxFrozenCost = 0
   try {

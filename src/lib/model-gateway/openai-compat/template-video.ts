@@ -55,7 +55,7 @@ export async function generateVideoViaOpenAICompatTemplate(
     model: request.modelId || '',
     prompt: request.prompt,
     image: request.imageUrl,
-    images: [request.imageUrl],
+    images: [request.imageUrl, ...(request.referenceImages || [])],
     aspectRatio: typeof request.options?.aspectRatio === 'string' ? request.options.aspectRatio : undefined,
     resolution: typeof request.options?.resolution === 'string' ? request.options.resolution : undefined,
     size: typeof request.options?.size === 'string' ? request.options.size : undefined,

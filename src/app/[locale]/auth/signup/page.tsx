@@ -23,6 +23,14 @@ export default function SignUp() {
     setError("")
     setSuccess("")
 
+    const trimmedName = name.trim()
+
+    if (!trimmedName) {
+      setError(t('usernameRequired'))
+      setLoading(false)
+      return
+    }
+
     if (password !== confirmPassword) {
       setError(t('passwordMismatch'))
       setLoading(false)
@@ -42,7 +50,7 @@ export default function SignUp() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name,
+          name: trimmedName,
           password,
         }),
       })
@@ -55,7 +63,13 @@ export default function SignUp() {
           router.push({ pathname: '/auth/signin' })
         }, 2000)
       } else {
-        setError(data.message || t('signupFailed'))
+        if (data?.code === 'CONFLICT' && data?.error?.details?.field === 'name') {
+          setError(t('usernameTaken'))
+        } else if (data?.code === 'RATE_LIMIT') {
+          setError(t('rateLimited'))
+        } else {
+          setError(data.message || t('signupFailed'))
+        }
       }
     } catch {
       setError(t('signupError'))

@@ -8,10 +8,10 @@ import type { AbstractIntlMessages } from 'next-intl'
 import CharacterSection from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/CharacterSection'
 
 const useProjectAssetsMock = vi.hoisted(() => vi.fn())
-const characterCardMock = vi.hoisted(() => vi.fn((_props: unknown) => null))
+const characterCardMock = vi.hoisted(() => vi.fn((_props?: unknown) => null))
 
-vi.mock('@/lib/query/hooks/useProjectAssets', () => ({
-  useProjectAssets: (projectId: string | null) => useProjectAssetsMock(projectId),
+vi.mock('@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/AssetStageProjectAssetsContext', () => ({
+  useAssetStageProjectAssets: (projectId: string | null) => useProjectAssetsMock(projectId),
 }))
 
 vi.mock('@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/CharacterCard', () => ({
@@ -45,24 +45,27 @@ vi.mock('@/components/ui/icons', () => ({
 const messages = {
   assets: {
     stage: {
-      characterAssets: '角色资产',
-      counts: '{characterCount} 个角色，{appearanceCount} 个形象',
-      pendingProfilesBanner: '待确认角色',
-      pendingProfilesHint: '确认角色设定',
-      confirmAll: '全部确认',
+      characterAssets: 'Characters',
+      counts: '{characterCount} characters, {appearanceCount} looks',
+      pendingProfilesBanner: 'Pending profiles',
+      pendingProfilesHint: 'Confirm profile settings',
+      confirmAll: 'Confirm all',
+    },
+    toolbar: {
+      generateAll: 'Generate all',
     },
     character: {
-      add: '新建角色',
-      assetCount: '{count} 个形象',
-      copyFromGlobal: '从资产中心导入',
-      delete: '删除角色',
+      add: 'Add character',
+      assetCount: '{count} looks',
+      copyFromGlobal: 'Import from library',
+      delete: 'Delete character',
     },
   },
 } as const
 
 function renderWithIntl(node: ReactElement) {
   const providerProps: ComponentProps<typeof NextIntlClientProvider> = {
-    locale: 'zh',
+    locale: 'en',
     messages: messages as unknown as AbstractIntlMessages,
     timeZone: 'Asia/Shanghai',
     children: node,
@@ -77,25 +80,25 @@ describe('CharacterSection actions', () => {
   it('renders import and delete actions stacked vertically with the import icon', () => {
     Reflect.set(globalThis, 'React', React)
     useProjectAssetsMock.mockReturnValue({
-      data: {
-        characters: [
-          {
-            id: 'character-1',
-            name: '西装男',
-            introduction: null,
-            appearances: [
-              {
-                id: 'appearance-1',
-                appearanceIndex: 0,
-                changeReason: '初始形象',
-                imageUrl: null,
-                imageUrls: [],
-                selectedIndex: null,
-              },
-            ],
-          },
-        ],
-      },
+      characters: [
+        {
+          id: 'character-1',
+          name: 'Suit Hero',
+          introduction: null,
+          appearances: [
+            {
+              id: 'appearance-1',
+              appearanceIndex: 0,
+              changeReason: 'default',
+              imageUrl: null,
+              imageUrls: [],
+              selectedIndex: null,
+            },
+          ],
+        },
+      ],
+      locations: [],
+      props: [],
     })
 
     const html = renderWithIntl(
@@ -105,6 +108,9 @@ describe('CharacterSection actions', () => {
         onClearTaskKey: () => undefined,
         onRegisterTransientTaskKey: () => undefined,
         isAnalyzingAssets: false,
+        onGenerateAll: () => undefined,
+        generateAllButtonLabel: 'Generate all',
+        isGenerateAllDisabled: false,
         onAddCharacter: () => undefined,
         onDeleteCharacter: () => undefined,
         onDeleteAppearance: () => undefined,
@@ -135,8 +141,9 @@ describe('CharacterSection actions', () => {
       }),
     )
 
-    expect(html).toContain('从资产中心导入')
-    expect(html).toContain('删除角色')
+    expect(html).toContain('Import from library')
+    expect(html).toContain('Delete character')
+    expect(html).toContain('Generate all')
     expect(html).toContain('data-icon="arrowDownCircle"')
     expect(html).toContain('flex flex-col items-end gap-1.5')
   })

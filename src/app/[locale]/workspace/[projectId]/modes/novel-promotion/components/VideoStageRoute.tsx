@@ -29,6 +29,7 @@ export default function VideoStageRoute() {
       capabilityOverrides={runtime.capabilityOverrides}
       videoRatio={runtime.videoRatio ?? undefined}
       userVideoModels={runtime.userVideoModels}
+      onUpdateProjectConfig={runtime.onUpdateProjectConfig}
       onGenerateVideo={runtime.onGenerateVideo}
       onGenerateAllVideos={runtime.onGenerateAllVideos}
       onBack={() => runtime.onStageChange('storyboard')}

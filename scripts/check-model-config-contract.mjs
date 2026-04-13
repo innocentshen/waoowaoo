@@ -14,8 +14,11 @@ const CAPABILITY_NAMESPACES = new Set(['llm', 'image', 'video', 'audio', 'lipsyn
 const MODEL_TYPES = new Set(['llm', 'image', 'video', 'audio', 'lipsync'])
 const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
   llm: new Set(['reasoningEffortOptions', 'fieldI18n']),
-  image: new Set(['resolutionOptions', 'fieldI18n']),
+  image: new Set(['aspectRatioOptions', 'resolutionOptions', 'fieldI18n']),
   video: new Set([
+    'generationModeOptions',
+    'generateAudioOptions',
+    'aspectRatioOptions',
     'durationOptions',
     'fpsOptions',
     'resolutionOptions',
@@ -32,9 +35,13 @@ const CAPABILITY_NAMESPACE_I18N_FIELDS = {
     reasoningEffort: 'reasoningEffortOptions',
   },
   image: {
+    aspectRatio: 'aspectRatioOptions',
     resolution: 'resolutionOptions',
   },
   video: {
+    generationMode: 'generationModeOptions',
+    generateAudio: 'generateAudioOptions',
+    aspectRatio: 'aspectRatioOptions',
     duration: 'durationOptions',
     fps: 'fpsOptions',
     resolution: 'resolutionOptions',
@@ -223,6 +230,9 @@ function validateCapabilities(modelType, capabilities) {
       pushIssue(issues, 'capabilities.image', 'image capabilities must be an object')
     } else {
       validateAllowedFields(issues, 'image', image)
+      if (image.aspectRatioOptions !== undefined && !isStringArray(image.aspectRatioOptions)) {
+        pushIssue(issues, 'capabilities.image.aspectRatioOptions', 'must be string array')
+      }
       if (image.resolutionOptions !== undefined && !isStringArray(image.resolutionOptions)) {
         pushIssue(issues, 'capabilities.image.resolutionOptions', 'must be string array')
       }
@@ -236,6 +246,21 @@ function validateCapabilities(modelType, capabilities) {
       pushIssue(issues, 'capabilities.video', 'video capabilities must be an object')
     } else {
       validateAllowedFields(issues, 'video', video)
+      if (video.generationModeOptions !== undefined && !isStringArray(video.generationModeOptions)) {
+        pushIssue(issues, 'capabilities.video.generationModeOptions', 'must be string array')
+      }
+      if (video.generateAudioOptions !== undefined && !Array.isArray(video.generateAudioOptions)) {
+        pushIssue(issues, 'capabilities.video.generateAudioOptions', 'must be boolean array')
+      }
+      if (
+        Array.isArray(video.generateAudioOptions)
+        && !video.generateAudioOptions.every((item) => typeof item === 'boolean')
+      ) {
+        pushIssue(issues, 'capabilities.video.generateAudioOptions', 'must be boolean array')
+      }
+      if (video.aspectRatioOptions !== undefined && !isStringArray(video.aspectRatioOptions)) {
+        pushIssue(issues, 'capabilities.video.aspectRatioOptions', 'must be string array')
+      }
       if (video.durationOptions !== undefined && !isNumberArray(video.durationOptions)) {
         pushIssue(issues, 'capabilities.video.durationOptions', 'must be number array')
       }

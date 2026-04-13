@@ -2,7 +2,7 @@ import path from 'node:path'
 import { createScopedLogger } from '@/lib/logging/core'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
-type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getSignedUrl' | 'toFetchableUrl'>
+type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getObjectBuffer' | 'getSignedUrl' | 'toFetchableUrl'>
 
 type InputIssueReason =
   | 'next_image_unwrapped'
@@ -88,6 +88,7 @@ let storageHelpersPromise: Promise<StorageHelpers> | null = null
 async function getStorageHelpers(): Promise<StorageHelpers> {
   if (!storageHelpersPromise) {
     storageHelpersPromise = import('@/lib/storage').then((mod) => ({
+      getObjectBuffer: mod.getObjectBuffer,
       getSignedUrl: mod.getSignedUrl,
       toFetchableUrl: mod.toFetchableUrl,
     }))
@@ -161,6 +162,42 @@ function toUrlMaybe(value: string): URL | null {
     return null
   }
   return null
+}
+
+function extractStorageKeyFromApiFilesPath(value: string): string | null {
+  const parsed = toUrlMaybe(value)
+  const pathname = parsed?.pathname || value
+  if (!pathname.startsWith('/api/files/')) {
+    return null
+  }
+
+  const encodedKey = pathname.replace('/api/files/', '').replace(/^\/+/, '')
+  if (!encodedKey) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(encodedKey)
+  } catch {
+    return encodedKey
+  }
+}
+
+function extractStorageKeyFromStorageSignPath(value: string): string | null {
+  const parsed = toUrlMaybe(value)
+  const pathname = parsed?.pathname || ''
+  if (pathname !== '/api/storage/sign') {
+    return null
+  }
+
+  const rawKey = parsed?.searchParams.get('key')?.trim() || ''
+  return rawKey || null
+}
+
+function extractDirectStorageKey(value: string): string | null {
+  if (!value) return null
+  if (isStorageKey(value)) return value
+  return extractStorageKeyFromStorageSignPath(value) || extractStorageKeyFromApiFilesPath(value)
 }
 
 function detectMimeFromBuffer(buffer: Uint8Array): string | null {
@@ -283,6 +320,13 @@ async function signStorageKey(storageKey: string): Promise<string> {
   return toFetchableUrl(getSignedUrl(storageKey, SIGNED_URL_TTL_SECONDS))
 }
 
+async function readStorageKeyAsDataUrl(storageKey: string): Promise<string> {
+  const { getObjectBuffer } = await getStorageHelpers()
+  const buffer = await getObjectBuffer(storageKey)
+  const mimeType = guessContentType(storageKey, null, buffer)
+  return `data:${mimeType};base64,${buffer.toString('base64')}`
+}
+
 async function toFetchableAbsoluteUrl(value: string): Promise<string> {
   const { toFetchableUrl } = await getStorageHelpers()
   return toFetchableUrl(value)
@@ -392,6 +436,23 @@ export async function normalizeToBase64ForGeneration(input: string): Promise<str
     return normalizedUrl
   }
 
+  const directStorageKey = extractDirectStorageKey(normalizedUrl)
+  if (directStorageKey) {
+    try {
+      return await readStorageKeyAsDataUrl(directStorageKey)
+    } catch (error) {
+      logger.warn({
+        message: 'direct storage read failed, falling back to fetch',
+        details: {
+          input,
+          normalizedUrl,
+          storageKey: directStorageKey,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+  }
+
   const fetchUrl = await toFetchableAbsoluteUrl(normalizedUrl)
   let response: Response
   try {
@@ -442,8 +503,9 @@ function toNormalizationIssue(
   }
 }
 
-export async function normalizeReferenceImagesForGeneration(
+async function normalizeReferenceImages(
   inputs: string[],
+  normalize: (input: string) => Promise<string>,
   options: {
     onIssue?: (issue: OutboundImageNormalizationIssue) => void
     context?: Record<string, unknown>
@@ -462,7 +524,7 @@ export async function normalizeReferenceImagesForGeneration(
     candidateCount += 1
 
     try {
-      normalized.push(await normalizeToBase64ForGeneration(trimmed))
+      normalized.push(await normalize(trimmed))
     } catch (error) {
       const issue = toNormalizationIssue(error, trimmed, index)
       options.onIssue?.(issue)
@@ -486,6 +548,26 @@ export async function normalizeReferenceImagesForGeneration(
   }
 
   return normalized
+}
+
+export async function normalizeReferenceImagesForGeneration(
+  inputs: string[],
+  options: {
+    onIssue?: (issue: OutboundImageNormalizationIssue) => void
+    context?: Record<string, unknown>
+  } = {},
+): Promise<string[]> {
+  return await normalizeReferenceImages(inputs, normalizeToBase64ForGeneration, options)
+}
+
+export async function normalizeReferenceImagesForOriginalMedia(
+  inputs: string[],
+  options: {
+    onIssue?: (issue: OutboundImageNormalizationIssue) => void
+    context?: Record<string, unknown>
+  } = {},
+): Promise<string[]> {
+  return await normalizeReferenceImages(inputs, normalizeToOriginalMediaUrl, options)
 }
 
 export function sanitizeImageInputsForTaskPayload(inputs: unknown[]): {

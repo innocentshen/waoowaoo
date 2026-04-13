@@ -8,6 +8,8 @@ export function useStoryboardStageUiState() {
     type: 'character' | 'location'
   } | null>(null)
 
+  const [sourcePanelPickerPanelId, setSourcePanelPickerPanelId] = useState<string | null>(null)
+
   const [aiDataPanel, setAIDataPanel] = useState<{
     storyboardId: string
     panelIndex: number
@@ -18,6 +20,8 @@ export function useStoryboardStageUiState() {
   return {
     assetPickerPanel,
     setAssetPickerPanel,
+    sourcePanelPickerPanelId,
+    setSourcePanelPickerPanelId,
     aiDataPanel,
     setAIDataPanel,
     isEpisodeBatchSubmitting,

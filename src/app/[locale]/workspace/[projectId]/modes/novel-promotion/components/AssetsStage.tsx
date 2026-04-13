@@ -17,15 +17,17 @@ import { useTranslations } from 'next-intl'
 import { useState, useCallback, useMemo } from 'react'
 // 移除了 useRouter 导入，因为不再需要在组件中操作 URL
 import { Character, CharacterAppearance, NovelPromotionClip } from '@/types/project'
+import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import {
   useAssetActions,
   useGenerateProjectCharacterImage,
   useGenerateProjectLocationImage,
-  useAssets,
+  useProjectAssets,
   useRefreshProjectAssets,
   useEpisodes,
   useEpisodeData,
+  type ProjectAssetsData,
 } from '@/lib/query/hooks'
 import {
   getAllClipsAssets,
@@ -50,6 +52,23 @@ import AssetToolbar from './assets/AssetToolbar'
 import AssetFilterBar, { type AssetKindFilter } from './assets/AssetFilterBar'
 import AssetsStageStatusOverlays from './assets/AssetsStageStatusOverlays'
 import AssetsStageModals from './assets/AssetsStageModals'
+import { AssetStageProjectAssetsProvider } from './assets/AssetStageProjectAssetsContext'
+
+type AssetBatchKind = 'character' | 'location' | 'prop'
+
+type SectionBatchProgressState = {
+  submitting: boolean
+  current: number
+  total: number
+}
+
+type SectionBatchState = Record<AssetBatchKind, SectionBatchProgressState>
+
+const createIdleBatchState = (): SectionBatchState => ({
+  character: { submitting: false, current: 0, total: 0 },
+  location: { submitting: false, current: 0, total: 0 },
+  prop: { submitting: false, current: 0, total: 0 },
+})
 
 interface AssetsStageProps {
   projectId: string
@@ -69,22 +88,39 @@ export default function AssetsStage({
   triggerGlobalAnalyze = false,
   onGlobalAnalyzeComplete
 }: AssetsStageProps) {
-  const { data: assets = [] } = useAssets({
-    scope: 'project',
-    projectId,
-  })
-  const characters = useMemo(
-    () => assets.filter((asset) => asset.kind === 'character'),
-    [assets],
+  const { data: projectAssets } = useProjectAssets(projectId)
+
+  return (
+    <AssetStageProjectAssetsProvider value={projectAssets}>
+      <AssetsStageContent
+        projectId={projectId}
+        isAnalyzingAssets={isAnalyzingAssets}
+        focusCharacterId={focusCharacterId}
+        focusCharacterRequestId={focusCharacterRequestId}
+        triggerGlobalAnalyze={triggerGlobalAnalyze}
+        onGlobalAnalyzeComplete={onGlobalAnalyzeComplete}
+        projectAssets={projectAssets}
+      />
+    </AssetStageProjectAssetsProvider>
   )
-  const locations = useMemo(
-    () => assets.filter((asset) => asset.kind === 'location'),
-    [assets],
-  )
-  const props = useMemo(
-    () => assets.filter((asset) => asset.kind === 'prop'),
-    [assets],
-  )
+}
+
+interface AssetsStageContentProps extends AssetsStageProps {
+  projectAssets: ProjectAssetsData
+}
+
+function AssetsStageContent({
+  projectId,
+  isAnalyzingAssets,
+  focusCharacterId = null,
+  focusCharacterRequestId = 0,
+  triggerGlobalAnalyze = false,
+  onGlobalAnalyzeComplete,
+  projectAssets,
+}: AssetsStageContentProps) {
+  const characters = projectAssets.characters
+  const locations = projectAssets.locations
+  const props = projectAssets.props
   const propAssetActions = useAssetActions({
     scope: 'project',
     projectId,
@@ -115,8 +151,10 @@ export default function AssetsStage({
   }, [generateCharacterImage, generateLocationImage, propAssetActions])
 
   const t = useTranslations('assets')
+  const { count: characterGenerationCount } = useImageGenerationCount('character')
+  const { count: locationGenerationCount } = useImageGenerationCount('location')
   // 计算资产总数
-  const totalAppearances = characters.reduce((sum, character) => sum + character.variants.length, 0)
+  const totalAppearances = characters.reduce((sum, character) => sum + (character.appearances?.length ?? 0), 0)
   const totalLocations = locations.length
   const totalProps = props.length
   const totalAssets = totalAppearances + totalLocations + totalProps
@@ -126,6 +164,7 @@ export default function AssetsStage({
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null)
   const [kindFilter, setKindFilter] = useState<AssetKindFilter>('all')
   const [episodeFilter, setEpisodeFilter] = useState<string | null>(null)
+  const [sectionBatchState, setSectionBatchState] = useState<SectionBatchState>(() => createIdleBatchState())
 
   // 获取剧集列表
   const { episodes } = useEpisodes(projectId)
@@ -183,15 +222,15 @@ export default function AssetsStage({
   )
 
   // 筛选后的计数
-  const filteredAppearances = filteredCharacters.reduce((sum, character) => sum + character.variants.length, 0)
+  const filteredAppearances = filteredCharacters.reduce((sum, character) => sum + (character.appearances?.length ?? 0), 0)
   const filteredLocCount = filteredLocations.length
   const filteredPropCount = filteredProps.length
   const filteredTotal = filteredAppearances + filteredLocCount + filteredPropCount
 
   // 辅助：获取角色形象
-  const getAppearances = (character: Character): CharacterAppearance[] => {
+  const getAppearances = useCallback((character: Character): CharacterAppearance[] => {
     return character.appearances || []
-  }
+  }, [])
 
   // 显示提示
   const showToast = useCallback((message: string, type: 'success' | 'warning' | 'error' = 'success', duration = 3000) => {
@@ -334,6 +373,14 @@ export default function AssetsStage({
     projectId,
     showToast
   })
+  const unconfirmedCharacterIds = useMemo(
+    () => new Set(unconfirmedCharacters.map((character) => character.id)),
+    [unconfirmedCharacters],
+  )
+  const visibleBatchCharacters = useMemo(
+    () => filteredCharacters.filter((character) => !unconfirmedCharacterIds.has(character.id)),
+    [filteredCharacters, unconfirmedCharacterIds],
+  )
   const batchConfirmingState = batchConfirming
     ? resolveTaskPresentationState({
       phase: 'processing',
@@ -364,6 +411,103 @@ export default function AssetsStage({
     closeImageEditModal,
     closeCharacterImageEditModal,
   })
+
+  const runSectionBatchGeneration = useCallback(async (
+    kind: AssetBatchKind,
+    tasks: Array<{ key: string; run: () => Promise<void> }>,
+  ) => {
+    if (tasks.length === 0) {
+      showToast(t('toolbar.generateAllNoop'), 'warning')
+      return
+    }
+
+    setSectionBatchState((prev) => ({
+      ...prev,
+      [kind]: {
+        submitting: true,
+        current: 0,
+        total: tasks.length,
+      },
+    }))
+
+    try {
+      await Promise.allSettled(
+        tasks.map(async (task) => {
+          registerTransientTaskKey(task.key)
+          try {
+            await task.run()
+          } catch {
+            clearTransientTaskKey(task.key)
+          } finally {
+            setSectionBatchState((prev) => ({
+              ...prev,
+              [kind]: {
+                submitting: true,
+                current: Math.min(tasks.length, prev[kind].current + 1),
+                total: tasks.length,
+              },
+            }))
+          }
+        }),
+      )
+    } finally {
+      onRefresh()
+      setSectionBatchState((prev) => ({
+        ...prev,
+        [kind]: {
+          submitting: false,
+          current: 0,
+          total: 0,
+        },
+      }))
+    }
+  }, [clearTransientTaskKey, onRefresh, registerTransientTaskKey, showToast, t])
+
+  const handleGenerateAllCharacters = useCallback(async () => {
+    const tasks = visibleBatchCharacters.flatMap((character) =>
+      getAppearances(character)
+        .filter((appearance) => !appearance.imageUrl && !appearance.imageUrls?.length)
+        .map((appearance) => ({
+          key: `character-${character.id}-${appearance.appearanceIndex}-group`,
+          run: () => handleGenerateImage('character', character.id, appearance.id, characterGenerationCount),
+        })),
+    )
+
+    await runSectionBatchGeneration('character', tasks)
+  }, [characterGenerationCount, getAppearances, handleGenerateImage, runSectionBatchGeneration, visibleBatchCharacters])
+
+  const handleGenerateAllLocations = useCallback(async () => {
+    const tasks = filteredLocations
+      .filter((location) => !location.images?.some((image) => image.imageUrl))
+      .map((location) => ({
+        key: `location-${location.id}-group`,
+        run: () => handleGenerateImage('location', location.id, undefined, locationGenerationCount),
+      }))
+
+    await runSectionBatchGeneration('location', tasks)
+  }, [filteredLocations, handleGenerateImage, locationGenerationCount, runSectionBatchGeneration])
+
+  const handleGenerateAllProps = useCallback(async () => {
+    const tasks = filteredProps
+      .filter((prop) => !prop.images?.some((image) => image.imageUrl))
+      .map((prop) => ({
+        key: `location-${prop.id}-group`,
+        run: () => handleGenerateImage('prop', prop.id, undefined, locationGenerationCount),
+      }))
+
+    await runSectionBatchGeneration('prop', tasks)
+  }, [filteredProps, handleGenerateImage, locationGenerationCount, runSectionBatchGeneration])
+
+  const isAnySectionBatchSubmitting = Object.values(sectionBatchState).some((state) => state.submitting)
+
+  const getGenerateAllButtonLabel = useCallback((kind: AssetBatchKind) => {
+    const state = sectionBatchState[kind]
+    if (!state.submitting) {
+      return t('toolbar.generateAll')
+    }
+
+    return `${t('toolbar.generateAll')} ${state.current}/${state.total}`
+  }, [sectionBatchState, t])
 
   return (
     <div className="space-y-4">
@@ -415,6 +559,9 @@ export default function AssetsStage({
             onClearTaskKey={clearTransientTaskKey}
             onRegisterTransientTaskKey={registerTransientTaskKey}
             isAnalyzingAssets={isAnalyzingAssets}
+            onGenerateAll={() => { void handleGenerateAllCharacters() }}
+            generateAllButtonLabel={getGenerateAllButtonLabel('character')}
+            isGenerateAllDisabled={isAnySectionBatchSubmitting || isAnalyzingAssets || isGlobalAnalyzing}
             onAddCharacter={() => setShowAddCharacter(true)}
             onDeleteCharacter={handleDeleteCharacter}
             onDeleteAppearance={handleDeleteAppearance}
@@ -453,6 +600,9 @@ export default function AssetsStage({
             activeTaskKeys={activeTaskKeys}
             onClearTaskKey={clearTransientTaskKey}
             onRegisterTransientTaskKey={registerTransientTaskKey}
+            onGenerateAll={() => { void handleGenerateAllLocations() }}
+            generateAllButtonLabel={getGenerateAllButtonLabel('location')}
+            isGenerateAllDisabled={isAnySectionBatchSubmitting || isAnalyzingAssets || isGlobalAnalyzing}
             onAddLocation={() => setShowAddLocation(true)}
             onDeleteLocation={handleDeleteLocation}
             onEditLocation={handleEditLocation}
@@ -476,6 +626,9 @@ export default function AssetsStage({
             activeTaskKeys={activeTaskKeys}
             onClearTaskKey={clearTransientTaskKey}
             onRegisterTransientTaskKey={registerTransientTaskKey}
+            onGenerateAll={() => { void handleGenerateAllProps() }}
+            generateAllButtonLabel={getGenerateAllButtonLabel('prop')}
+            isGenerateAllDisabled={isAnySectionBatchSubmitting || isAnalyzingAssets || isGlobalAnalyzing}
             onAddLocation={() => setShowAddProp(true)}
             onDeleteLocation={handleDeleteProp}
             onEditLocation={handleEditProp}

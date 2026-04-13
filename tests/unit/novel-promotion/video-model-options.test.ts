@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  filterVideoModelOptionsByGenerationMode,
   filterNormalVideoModelOptions,
   isFirstLastFrameOnlyModel,
+  supportsVideoGenerationMode,
   supportsFirstLastFrame,
 } from '@/lib/model-capabilities/video-model-options'
 import type { VideoModelOption } from '@/lib/novel-promotion/stages/video-stage-runtime/types'
@@ -33,8 +35,18 @@ describe('video model options partition', () => {
       label: 'both',
       capabilities: {
         video: {
-          generationModeOptions: ['normal', 'firstlastframe'],
+          generationModeOptions: ['normal', 'firstlastframe', 'edit'],
           firstlastframe: true,
+        },
+      },
+    },
+    {
+      value: 'p::extend-only',
+      label: 'extend-only',
+      capabilities: {
+        video: {
+          generationModeOptions: ['extend'],
+          firstlastframe: false,
         },
       },
     },
@@ -62,6 +74,19 @@ describe('video model options partition', () => {
       'p::normal',
       'p::both',
       'p::custom-no-capability',
+    ])
+  })
+
+  it('filters video models by explicit generation mode support', () => {
+    expect(supportsVideoGenerationMode(models[2], 'edit')).toBe(true)
+    expect(supportsVideoGenerationMode(models[3], 'extend')).toBe(true)
+    expect(supportsVideoGenerationMode(models[3], 'normal')).toBe(false)
+
+    expect(filterVideoModelOptionsByGenerationMode(models, 'edit').map((item) => item.value)).toEqual([
+      'p::both',
+    ])
+    expect(filterVideoModelOptionsByGenerationMode(models, 'extend').map((item) => item.value)).toEqual([
+      'p::extend-only',
     ])
   })
 })

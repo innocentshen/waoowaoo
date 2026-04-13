@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { VideoModelOption, VideoGenerationOptionValue, VideoGenerationOptions } from '../../../types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type {
+  VideoGenerationMode,
+  VideoModelOption,
+  VideoGenerationOptionValue,
+  VideoGenerationOptions,
+} from '../../../types'
 import type { CapabilitySelections } from '@/lib/model-config-contract'
 import {
   normalizeVideoGenerationSelections,
   resolveEffectiveVideoCapabilityDefinitions,
   resolveEffectiveVideoCapabilityFields,
 } from '@/lib/model-capabilities/video-effective'
+import { filterVideoModelOptionsByGenerationMode } from '@/lib/model-capabilities/video-model-options'
 import { projectVideoPricingTiersByFixedSelections } from '@/lib/model-pricing/video-tier'
 
 interface UsePanelVideoModelParams {
   defaultVideoModel: string
   capabilityOverrides?: CapabilitySelections
   userVideoModels?: VideoModelOption[]
+  fixedGenerationMode?: VideoGenerationMode
+  onPersistSelectedModel?: (modelKey: string) => void
+  onPersistGenerationOptions?: (modelKey: string, generationOptions: VideoGenerationOptions) => void
 }
 
 interface CapabilityField {
@@ -24,6 +33,21 @@ interface CapabilityField {
   disabledOptions?: VideoGenerationOptionValue[]
   value: VideoGenerationOptionValue | undefined
 }
+
+type ResolvedModelConfig = {
+  pricingTiers: ReturnType<typeof projectVideoPricingTiersByFixedSelections>
+  capabilityDefinitions: ReturnType<typeof resolveEffectiveVideoCapabilityDefinitions>
+}
+
+const EMPTY_GENERATION_OPTIONS: VideoGenerationOptions = {}
+const EMPTY_VIDEO_MODEL_OPTIONS: VideoModelOption[] = []
+const EMPTY_RESOLVED_MODEL_CONFIG: ResolvedModelConfig = {
+  pricingTiers: [],
+  capabilityDefinitions: [],
+}
+const filteredVideoModelOptionsCache = new WeakMap<VideoModelOption[], Map<VideoGenerationMode, VideoModelOption[]>>()
+const selectionCache = new WeakMap<CapabilitySelections, Map<string, VideoGenerationOptions>>()
+const resolvedModelConfigCache = new WeakMap<VideoModelOption, Map<VideoGenerationMode, ResolvedModelConfig>>()
 
 function toFieldLabel(field: string): string {
   return field.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())
@@ -50,39 +74,113 @@ function readSelectionForModel(
   capabilityOverrides: CapabilitySelections | undefined,
   modelKey: string,
 ): VideoGenerationOptions {
-  if (!modelKey || !capabilityOverrides) return {}
+  if (!modelKey || !capabilityOverrides) return EMPTY_GENERATION_OPTIONS
+
+  const cachedSelections = selectionCache.get(capabilityOverrides)
+  if (cachedSelections?.has(modelKey)) {
+    return cachedSelections.get(modelKey) || EMPTY_GENERATION_OPTIONS
+  }
+
   const rawSelection = capabilityOverrides[modelKey]
-  if (!isRecord(rawSelection)) return {}
+  if (!isRecord(rawSelection)) {
+    if (cachedSelections) {
+      cachedSelections.set(modelKey, EMPTY_GENERATION_OPTIONS)
+    } else {
+      selectionCache.set(capabilityOverrides, new Map([[modelKey, EMPTY_GENERATION_OPTIONS]]))
+    }
+    return EMPTY_GENERATION_OPTIONS
+  }
 
   const selection: VideoGenerationOptions = {}
   for (const [field, value] of Object.entries(rawSelection)) {
-    if (field === 'aspectRatio') continue
     if (!isGenerationOptionValue(value)) continue
     selection[field] = value
   }
+  if (cachedSelections) {
+    cachedSelections.set(modelKey, selection)
+  } else {
+    selectionCache.set(capabilityOverrides, new Map([[modelKey, selection]]))
+  }
   return selection
+}
+
+function getFilteredVideoModelOptions(
+  userVideoModels: VideoModelOption[],
+  fixedGenerationMode: VideoGenerationMode,
+) {
+  const cachedModes = filteredVideoModelOptionsCache.get(userVideoModels)
+  if (cachedModes?.has(fixedGenerationMode)) {
+    return cachedModes.get(fixedGenerationMode) || EMPTY_VIDEO_MODEL_OPTIONS
+  }
+
+  const filteredOptions = filterVideoModelOptionsByGenerationMode(userVideoModels, fixedGenerationMode)
+  if (cachedModes) {
+    cachedModes.set(fixedGenerationMode, filteredOptions)
+  } else {
+    filteredVideoModelOptionsCache.set(userVideoModels, new Map([[fixedGenerationMode, filteredOptions]]))
+  }
+  return filteredOptions
+}
+
+function getResolvedModelConfig(
+  selectedOption: VideoModelOption | undefined,
+  fixedGenerationMode: VideoGenerationMode,
+): ResolvedModelConfig {
+  if (!selectedOption) return EMPTY_RESOLVED_MODEL_CONFIG
+
+  const cachedModes = resolvedModelConfigCache.get(selectedOption)
+  if (cachedModes?.has(fixedGenerationMode)) {
+    return cachedModes.get(fixedGenerationMode) || EMPTY_RESOLVED_MODEL_CONFIG
+  }
+
+  const pricingTiers = projectVideoPricingTiersByFixedSelections({
+    tiers: selectedOption.videoPricingTiers ?? [],
+    fixedSelections: {
+      generationMode: fixedGenerationMode,
+    },
+  })
+  const resolvedConfig: ResolvedModelConfig = {
+    pricingTiers,
+    capabilityDefinitions: resolveEffectiveVideoCapabilityDefinitions({
+      videoCapabilities: selectedOption.capabilities?.video,
+      pricingTiers,
+    }).filter((definition) => definition.field !== 'generationMode'),
+  }
+
+  if (cachedModes) {
+    cachedModes.set(fixedGenerationMode, resolvedConfig)
+  } else {
+    resolvedModelConfigCache.set(selectedOption, new Map([[fixedGenerationMode, resolvedConfig]]))
+  }
+
+  return resolvedConfig
 }
 
 export function usePanelVideoModel({
   defaultVideoModel,
   capabilityOverrides,
   userVideoModels,
+  fixedGenerationMode = 'normal',
+  onPersistSelectedModel,
+  onPersistGenerationOptions,
 }: UsePanelVideoModelParams) {
   const [selectedModel, setSelectedModel] = useState(defaultVideoModel || '')
   const [generationOptions, setGenerationOptions] = useState<VideoGenerationOptions>(() =>
     readSelectionForModel(capabilityOverrides, defaultVideoModel || ''),
   )
-  const videoModelOptions = userVideoModels ?? []
-  const selectedOption = videoModelOptions.find((option) => option.value === selectedModel)
-  const pricingTiers = useMemo(
-    () => projectVideoPricingTiersByFixedSelections({
-      tiers: selectedOption?.videoPricingTiers ?? [],
-      fixedSelections: {
-        generationMode: 'normal',
-      },
-    }),
-    [selectedOption?.videoPricingTiers],
+  const videoModelOptions = useMemo(
+    () => getFilteredVideoModelOptions(userVideoModels ?? EMPTY_VIDEO_MODEL_OPTIONS, fixedGenerationMode),
+    [fixedGenerationMode, userVideoModels],
   )
+  const selectedOption = useMemo(
+    () => videoModelOptions.find((option) => option.value === selectedModel),
+    [selectedModel, videoModelOptions],
+  )
+  const resolvedModelConfig = useMemo(
+    () => getResolvedModelConfig(selectedOption, fixedGenerationMode),
+    [fixedGenerationMode, selectedOption],
+  )
+  const pricingTiers = resolvedModelConfig.pricingTiers
 
   useEffect(() => {
     setSelectedModel(defaultVideoModel || '')
@@ -99,21 +197,11 @@ export function usePanelVideoModel({
     setSelectedModel(videoModelOptions[0]?.value || '')
   }, [selectedModel, videoModelOptions])
 
-  const capabilityDefinitions = useMemo(
-    () => resolveEffectiveVideoCapabilityDefinitions({
-      videoCapabilities: selectedOption?.capabilities?.video,
-      pricingTiers,
-    }),
-    [pricingTiers, selectedOption?.capabilities?.video],
-  )
+  const capabilityDefinitions = resolvedModelConfig.capabilityDefinitions
 
   const selectedModelOverrides = useMemo(
     () => readSelectionForModel(capabilityOverrides, selectedModel),
     [capabilityOverrides, selectedModel],
-  )
-  const selectedModelOverridesSignature = useMemo(
-    () => JSON.stringify(selectedModelOverrides),
-    [selectedModelOverrides],
   )
 
   useEffect(() => {
@@ -122,7 +210,7 @@ export function usePanelVideoModel({
       pricingTiers,
       selection: selectedModelOverrides,
     }))
-  }, [selectedModel, selectedModelOverridesSignature, capabilityDefinitions, pricingTiers, selectedModelOverrides])
+  }, [selectedModel, capabilityDefinitions, pricingTiers, selectedModelOverrides])
 
   useEffect(() => {
     setGenerationOptions((previous) => normalizeVideoGenerationSelections({
@@ -172,26 +260,40 @@ export function usePanelVideoModel({
     })
   }, [capabilityDefinitions, effectiveFieldMap])
 
-  const setCapabilityValue = (field: string, rawValue: string) => {
+  const handleModelChange = useCallback((modelKey: string) => {
+    setSelectedModel(modelKey)
+    onPersistSelectedModel?.(modelKey)
+  }, [onPersistSelectedModel])
+
+  const setCapabilityValue = useCallback((field: string, rawValue: string) => {
+    if (!selectedModel) return
     const definitionField = definitionFieldMap.get(field)
     if (!definitionField || definitionField.options.length === 0) return
     const parsedValue = parseByOptionType(rawValue, definitionField.options[0])
     if (!definitionField.options.includes(parsedValue)) return
-    setGenerationOptions((previous) => ({
-      ...normalizeVideoGenerationSelections({
-        definitions: capabilityDefinitions,
-        pricingTiers,
-        selection: {
-          ...previous,
-          [field]: parsedValue,
-        },
-        pinnedFields: [field],
-      }),
-    }))
-  }
+    const nextGenerationOptions = normalizeVideoGenerationSelections({
+      definitions: capabilityDefinitions,
+      pricingTiers,
+      selection: {
+        ...generationOptions,
+        [field]: parsedValue,
+      },
+      pinnedFields: [field],
+    })
+    setGenerationOptions(nextGenerationOptions)
+    onPersistGenerationOptions?.(selectedModel, nextGenerationOptions)
+  }, [
+    capabilityDefinitions,
+    definitionFieldMap,
+    generationOptions,
+    onPersistGenerationOptions,
+    pricingTiers,
+    selectedModel,
+  ])
 
   return {
     selectedModel,
+    handleModelChange,
     setSelectedModel,
     generationOptions,
     capabilityFields,

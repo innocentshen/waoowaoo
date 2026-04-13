@@ -1,8 +1,9 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { TASK_TYPE } from '@/lib/task/types'
 import { maybeSubmitLLMTask } from '@/lib/llm-observe/route-task'
+import { detectEpisodeMarkers, splitByMarkers } from '@/lib/episode-marker-detector'
 
 /**
  * AI 分集 API（任务化）
@@ -24,6 +25,16 @@ export const POST = apiHandler(async (
   }
   if (content.length < 100) {
     throw new ApiError('INVALID_PARAMS')
+  }
+
+  const markerResult = detectEpisodeMarkers(content)
+  if (markerResult.hasMarkers && markerResult.matches.length >= 2) {
+    return NextResponse.json({
+      success: true,
+      method: 'markers',
+      markerType: markerResult.markerType,
+      episodes: splitByMarkers(content, markerResult),
+    })
   }
 
   const asyncTaskResponse = await maybeSubmitLLMTask({

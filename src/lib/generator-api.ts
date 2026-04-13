@@ -22,6 +22,40 @@ import { generateBailianAudio, generateBailianImage, generateBailianVideo } from
 import { generateSiliconFlowAudio, generateSiliconFlowImage, generateSiliconFlowVideo } from './providers/siliconflow'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'grok'])
+const GROK2API_IMAGE_GENERATION_MODEL_IDS = new Set([
+    'grok-imagine-1.0',
+    'grok-imagine-1.0-fast',
+    'grok-imagine-image-lite',
+    'grok-imagine-image',
+    'grok-imagine-image-pro',
+])
+const GROK2API_IMAGE_EDIT_MODEL_IDS = new Set([
+    'grok-imagine-1.0-edit',
+    'grok-imagine-image-edit',
+])
+const GROK2API_VIDEO_MODEL_IDS = new Set([
+    'grok-imagine-1.0-video',
+    'grok-imagine-video',
+])
+const GROK2API_SUPPORTED_SIZES = new Set([
+    '1024x1024',
+    '1280x720',
+    '720x1280',
+    '1792x1024',
+    '1024x1792',
+])
+const GROK2API_ASPECT_RATIO_TO_SIZE: Record<string, string> = {
+    '1:1': '1024x1024',
+    '16:9': '1280x720',
+    '9:16': '720x1280',
+    '3:2': '1792x1024',
+    '2:3': '1024x1792',
+}
+const GROK2API_VIDEO_QUALITY_BY_RESOLUTION: Record<string, 'standard' | 'high'> = {
+    '480p': 'standard',
+    '720p': 'high',
+    '1080p': 'high',
+}
 
 /**
  * 将 aspectRatio 映射为 OpenAI 兼容的 size
@@ -38,6 +72,81 @@ function aspectRatioToOpenAISize(aspectRatio: string | undefined): string | unde
         '2:3': '1024x1536',
     }
     return mapping[ratio] || undefined
+}
+
+function readStringOption(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined
+    const trimmed = value.trim()
+    return trimmed || undefined
+}
+
+function isGrok2ApiImageModelId(modelId: string): boolean {
+    return GROK2API_IMAGE_GENERATION_MODEL_IDS.has(modelId) || GROK2API_IMAGE_EDIT_MODEL_IDS.has(modelId)
+}
+
+function isGrok2ApiVideoModelId(modelId: string): boolean {
+    return GROK2API_VIDEO_MODEL_IDS.has(modelId)
+}
+
+function aspectRatioToGrok2ApiSize(aspectRatio: string | undefined): string | undefined {
+    if (!aspectRatio) return undefined
+    const ratio = aspectRatio.trim()
+    return GROK2API_ASPECT_RATIO_TO_SIZE[ratio]
+}
+
+function normalizeGrok2ApiImageTemplateOptions(
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    const next = { ...options }
+    const explicitSize = readStringOption(next.size)
+    if (explicitSize) return next
+
+    const explicitResolution = readStringOption(next.resolution)
+    if (explicitResolution && GROK2API_SUPPORTED_SIZES.has(explicitResolution)) {
+        return {
+            ...next,
+            size: explicitResolution,
+        }
+    }
+
+    const mappedSize = aspectRatioToGrok2ApiSize(readStringOption(next.aspectRatio))
+    return {
+        ...next,
+        size: mappedSize || '1024x1024',
+    }
+}
+
+function normalizeGrok2ApiVideoTemplateOptions(
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    const next = { ...options }
+    const explicitSize = readStringOption(next.size)
+    const explicitQuality = readStringOption(next.quality)
+
+    const mappedSize = explicitSize || aspectRatioToGrok2ApiSize(readStringOption(next.aspectRatio)) || '1792x1024'
+    const mappedQuality = explicitQuality || GROK2API_VIDEO_QUALITY_BY_RESOLUTION[readStringOption(next.resolution) || ''] || 'standard'
+
+    return {
+        ...next,
+        size: mappedSize,
+        quality: mappedQuality,
+    }
+}
+
+function normalizeTemplateImageOptions(
+    modelId: string,
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    if (!isGrok2ApiImageModelId(modelId)) return options
+    return normalizeGrok2ApiImageTemplateOptions(options)
+}
+
+function normalizeTemplateVideoOptions(
+    modelId: string,
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    if (!isGrok2ApiVideoModelId(modelId)) return options
+    return normalizeGrok2ApiVideoTemplateOptions(options)
 }
 
 /**
@@ -109,6 +218,7 @@ export async function generateImage(
             throw new Error(`MODEL_COMPAT_MEDIA_TEMPLATE_REQUIRED: ${selection.modelKey}`)
         }
         if (compatTemplate) {
+            const compatOptions = normalizeTemplateImageOptions(selection.modelId, generatorOptions)
             return await generateImageViaOpenAICompatTemplate({
                 userId,
                 providerId: selection.provider,
@@ -117,7 +227,7 @@ export async function generateImage(
                 prompt,
                 referenceImages,
                 options: {
-                    ...generatorOptions,
+                    ...compatOptions,
                     provider: selection.provider,
                     modelId: selection.modelId,
                     modelKey: selection.modelKey,
@@ -179,25 +289,32 @@ export async function generateImage(
 export async function generateVideo(
     userId: string,
     modelKey: string,
-    imageUrl: string,
+    imageUrlOrSource: string | { imageUrl?: string; videoUrl?: string },
     options?: {
         prompt?: string
+        referenceImages?: string[]
         duration?: number
         fps?: number
         resolution?: string      // '720p' | '1080p'
         aspectRatio?: string     // '16:9' | '9:16'
         generateAudio?: boolean  // 仅 Seedance 1.5 Pro 支持
         lastFrameImageUrl?: string  // 首尾帧模式的尾帧图片
-        [key: string]: string | number | boolean | undefined
+        [key: string]: string | number | boolean | string[] | undefined
     }
 ): Promise<GenerateResult> {
+    const source = typeof imageUrlOrSource === 'string'
+        ? { imageUrl: imageUrlOrSource }
+        : imageUrlOrSource
     const selection = await resolveModelSelection(userId, modelKey, 'video')
     _ulogInfo(`[generateVideo] resolved model selection: ${selection.modelKey}`)
     const providerKey = getProviderKey(selection.provider).toLowerCase()
     if (providerKey === 'bailian') {
+        if (!source.imageUrl) {
+            throw new Error(`VIDEO_INPUT_UNSUPPORTED: ${selection.modelKey} requires imageUrl`)
+        }
         return await generateBailianVideo({
             userId,
-            imageUrl,
+            imageUrl: source.imageUrl,
             prompt: options?.prompt,
             options: {
                 ...(options || {}),
@@ -208,9 +325,12 @@ export async function generateVideo(
         })
     }
     if (providerKey === 'siliconflow') {
+        if (!source.imageUrl) {
+            throw new Error(`VIDEO_INPUT_UNSUPPORTED: ${selection.modelKey} requires imageUrl`)
+        }
         return await generateSiliconFlowVideo({
             userId,
-            imageUrl,
+            imageUrl: source.imageUrl,
             prompt: options?.prompt,
             options: {
                 ...(options || {}),
@@ -226,22 +346,27 @@ export async function generateVideo(
         ? 'official'
         : (providerConfig.gatewayRoute || defaultGatewayRoute)
 
-    const { prompt, ...providerOptions } = options || {}
+    const { prompt, referenceImages, ...providerOptions } = options || {}
     if (gatewayRoute === 'openai-compat') {
+        if (source.videoUrl && !source.imageUrl) {
+            throw new Error(`VIDEO_INPUT_UNSUPPORTED: ${selection.modelKey} requires imageUrl`)
+        }
         const compatTemplate = selection.compatMediaTemplate
         if (providerKey === 'openai-compatible' && !compatTemplate) {
             throw new Error(`MODEL_COMPAT_MEDIA_TEMPLATE_REQUIRED: ${selection.modelKey}`)
         }
         if (compatTemplate) {
+            const compatOptions = normalizeTemplateVideoOptions(selection.modelId, providerOptions)
             return await generateVideoViaOpenAICompatTemplate({
                 userId,
                 providerId: selection.provider,
                 modelId: selection.modelId,
                 modelKey: selection.modelKey,
-                imageUrl,
+                imageUrl: source.imageUrl || '',
+                referenceImages,
                 prompt: prompt || '',
                 options: {
-                    ...providerOptions,
+                    ...compatOptions,
                     provider: selection.provider,
                     modelId: selection.modelId,
                     modelKey: selection.modelKey,
@@ -256,7 +381,8 @@ export async function generateVideo(
             providerId: selection.provider,
             modelId: selection.modelId,
             modelKey: selection.modelKey,
-            imageUrl,
+            imageUrl: source.imageUrl || '',
+            referenceImages,
             prompt: prompt || '',
             options: {
                 ...providerOptions,
@@ -271,8 +397,10 @@ export async function generateVideo(
     const generator = createVideoGenerator(selection.provider)
     return await generator.generate({
         userId,
-        imageUrl,
+        imageUrl: source.imageUrl,
+        videoUrl: source.videoUrl,
         prompt,
+        referenceImages,
         options: {
             ...providerOptions,
             provider: selection.provider,

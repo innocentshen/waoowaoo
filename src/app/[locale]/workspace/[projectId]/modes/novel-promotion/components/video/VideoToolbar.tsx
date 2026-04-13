@@ -11,6 +11,9 @@ interface VideoToolbarProps {
   failedCount: number
   isAnyTaskRunning: boolean
   isDownloading: boolean
+  isOptimizingPrompts?: boolean
+  canOptimizePrompts?: boolean
+  onOptimizeAllPrompts?: () => void
   onGenerateAll: () => void
   onDownloadAll: () => void
   onBack: () => void
@@ -25,6 +28,9 @@ export default function VideoToolbar({
   failedCount,
   isAnyTaskRunning,
   isDownloading,
+  isOptimizingPrompts = false,
+  canOptimizePrompts = false,
+  onOptimizeAllPrompts,
   onGenerateAll,
   onDownloadAll,
   onBack,
@@ -69,9 +75,31 @@ export default function VideoToolbar({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {onOptimizeAllPrompts && (
+            <button
+              type="button"
+              onClick={onOptimizeAllPrompts}
+              disabled={!canOptimizePrompts || isAnyTaskRunning || isOptimizingPrompts}
+              className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[var(--glass-stroke-base)] disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!canOptimizePrompts ? t('toolbar.noPromptsToOptimize') : t('toolbar.optimizeAllPrompts')}
+            >
+              {isOptimizingPrompts ? (
+                <>
+                  <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                  <span>{t('toolbar.optimizingAllPrompts')}</span>
+                </>
+              ) : (
+                <>
+                  <AppIcon name="sparklesAlt" className="w-4 h-4" />
+                  <span>{t('toolbar.optimizeAllPrompts')}</span>
+                </>
+              )}
+            </button>
+          )}
           <button
+            type="button"
             onClick={onGenerateAll}
-            disabled={isAnyTaskRunning}
+            disabled={isAnyTaskRunning || isOptimizingPrompts}
             className="glass-btn-base glass-btn-primary flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isAnyTaskRunning ? (
@@ -84,6 +112,7 @@ export default function VideoToolbar({
             )}
           </button>
           <button
+            type="button"
             onClick={onDownloadAll}
             disabled={videosWithUrl === 0 || isDownloading}
             className="glass-btn-base glass-btn-tone-info flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -100,6 +129,7 @@ export default function VideoToolbar({
           </button>
           {onEnterEditor && (
             <button
+              type="button"
               onClick={onEnterEditor}
               disabled={!videosReady}
               className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[var(--glass-stroke-base)] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -110,6 +140,7 @@ export default function VideoToolbar({
             </button>
           )}
           <button
+            type="button"
             onClick={onBack}
             className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[var(--glass-stroke-base)] hover:text-[var(--glass-tone-info-fg)]"
           >

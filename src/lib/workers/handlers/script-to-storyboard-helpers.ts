@@ -1,6 +1,7 @@
 import { safeParseJson, safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import type { StoryboardPanel } from '@/lib/storyboard-phases'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 export type JsonRecord = Record<string, unknown>
 
@@ -23,8 +24,8 @@ export type PersistedStoryboard = {
   }>
 }
 
-export function parseEffort(value: unknown): 'minimal' | 'low' | 'medium' | 'high' | null {
-  if (value === 'minimal' || value === 'low' || value === 'medium' || value === 'high') return value
+export function parseEffort(value: unknown): ReasoningEffort | null {
+  if (value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh') return value
   return null
 }
 

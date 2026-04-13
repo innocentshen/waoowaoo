@@ -1,9 +1,9 @@
 import { resolveTaskErrorMessage } from './error-message'
 import { apiFetch } from '@/lib/api-fetch'
 
-type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
+export type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
 
-type TaskSnapshot = {
+export type TaskSnapshot = {
   id: string
   status: TaskStatus
   progress?: number | null
@@ -11,12 +11,12 @@ type TaskSnapshot = {
   errorMessage?: string | null
 }
 
-type TaskSnapshotResponse = {
+export type TaskSnapshotResponse = {
   success: boolean
   task?: TaskSnapshot | null
 }
 
-type WaitTaskOptions = {
+export type WaitTaskOptions = {
   intervalMs?: number
   timeoutMs?: number
   onTaskUpdate?: (task: TaskSnapshot) => void
@@ -32,6 +32,24 @@ export function isAsyncTaskResponse(data: unknown): data is { async: true; taskI
   return payload.async === true && typeof payload.taskId === 'string' && payload.taskId.length > 0
 }
 
+export async function getTaskSnapshot(taskId: string) {
+  const response = await apiFetch(`/api/tasks/${taskId}`, {
+    method: 'GET',
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null)
+    throw new Error(resolveTaskErrorMessage(errorPayload, `Task fetch failed: ${taskId}`))
+  }
+
+  const payload = (await response.json()) as TaskSnapshotResponse
+  const task = payload.task
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`)
+  }
+  return task
+}
+
 export async function waitForTaskResult(taskId: string, options: WaitTaskOptions = {}) {
   const intervalMs = options.intervalMs ?? 1500
   const timeoutMs = options.timeoutMs ?? 0
@@ -43,20 +61,7 @@ export async function waitForTaskResult(taskId: string, options: WaitTaskOptions
       throw new Error(`Task timeout: ${taskId}`)
     }
 
-    const response = await apiFetch(`/api/tasks/${taskId}`, {
-      method: 'GET',
-      cache: 'no-store',
-    })
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null)
-      throw new Error(resolveTaskErrorMessage(errorPayload, `Task fetch failed: ${taskId}`))
-    }
-
-    const payload = (await response.json()) as TaskSnapshotResponse
-    const task = payload.task
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`)
-    }
+    const task = await getTaskSnapshot(taskId)
 
     onTaskUpdate?.(task)
 

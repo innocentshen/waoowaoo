@@ -36,6 +36,8 @@ interface LocationImageLike {
 
 interface LocationLike {
   name: string
+  assetKind?: string | null
+  summary?: string | null
   images?: LocationImageLike[]
 }
 
@@ -43,12 +45,14 @@ interface NovelProjectData {
   videoRatio?: string | null
   characters?: CharacterLike[]
   locations?: LocationLike[]
+  props?: LocationLike[]
 }
 
 interface PanelLike {
   sketchImageUrl?: string | null
   characters?: string | null
   location?: string | null
+  props?: string | null
 }
 
 export interface PanelCharacterReference {
@@ -158,7 +162,7 @@ export async function generateProjectLabeledImageToStorage(params: {
 
 export async function resolveNovelData(projectId: string) {
   const db = prisma as unknown as NovelDataDb
-  const data = await db.novelPromotionProject.findUnique({
+  const rawData = await db.novelPromotionProject.findUnique({
     where: { projectId },
     include: {
       characters: { include: { appearances: { orderBy: { appearanceIndex: 'asc' } } } },
@@ -166,11 +170,16 @@ export async function resolveNovelData(projectId: string) {
     },
   })
 
-  if (!data) {
+  if (!rawData) {
     throw new Error(`NovelPromotionProject not found: ${projectId}`)
   }
 
-  return data
+  const allLocations = Array.isArray(rawData.locations) ? rawData.locations : []
+  return {
+    ...rawData,
+    locations: allLocations.filter((item) => item.assetKind !== 'prop'),
+    props: allLocations.filter((item) => item.assetKind === 'prop'),
+  }
 }
 
 export function parsePanelCharacterReferences(value: string | null | undefined): PanelCharacterReference[] {
@@ -196,6 +205,27 @@ export function parsePanelCharacterReferences(value: string | null | undefined):
   } catch {
     return []
   }
+}
+
+export function parseNamedReferenceList(value: string | null | undefined): string[] {
+  if (!value) return []
+
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    }
+  } catch {
+    // fall through to comma-separated parsing
+  }
+
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 /**
@@ -250,14 +280,22 @@ export async function collectPanelReferenceImages(projectData: NovelProjectData,
     if (signed) refs.push(signed)
   }
 
-  if (panel.location) {
-    const location = (projectData.locations || []).find((loc) => loc.name.toLowerCase() === panel.location!.toLowerCase())
-    if (location) {
-      const images = location.images || []
-      const selected = images.find((img) => img.isSelected) || images[0]
-      const signed = toSignedUrlIfCos(selected?.imageUrl, 3600)
-      if (signed) refs.push(signed)
-    }
+  for (const locationName of parseNamedReferenceList(panel.location)) {
+    const location = (projectData.locations || []).find((loc) => loc.name.toLowerCase() === locationName.toLowerCase())
+    if (!location) continue
+    const images = location.images || []
+    const selected = images.find((img) => img.isSelected) || images[0]
+    const signed = toSignedUrlIfCos(selected?.imageUrl, 3600)
+    if (signed) refs.push(signed)
+  }
+
+  for (const propName of parseNamedReferenceList(panel.props)) {
+    const prop = (projectData.props || []).find((item) => item.name.toLowerCase() === propName.toLowerCase())
+    if (!prop) continue
+    const images = prop.images || []
+    const selected = images.find((img) => img.isSelected) || images[0]
+    const signed = toSignedUrlIfCos(selected?.imageUrl, 3600)
+    if (signed) refs.push(signed)
   }
 
   return refs

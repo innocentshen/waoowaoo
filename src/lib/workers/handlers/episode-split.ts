@@ -11,6 +11,7 @@ import { createTextMarkerMatcher } from '@/lib/novel-promotion/story-to-script/c
 import { createWorkerLLMStreamCallbacks, createWorkerLLMStreamContext } from './llm-stream'
 import type { TaskJobData } from '@/lib/task/types'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 type EpisodeSplit = {
   number?: number
@@ -63,12 +64,7 @@ export async function handleEpisodeSplitTask(job: Job<TaskJobData>) {
     throw new Error('文本太短，至少需要 100 字')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

@@ -23,6 +23,7 @@ import {
     DEFAULT_VIDEO_WORKFLOW_CONCURRENCY,
     normalizeWorkflowConcurrencyValue,
 } from '@/lib/workflow-concurrency'
+import { resolvePreferredCapabilityDefault } from '@/lib/model-capabilities/defaults'
 
 interface DefaultModels {
     analysisModel?: string
@@ -69,15 +70,68 @@ interface UseProvidersReturn {
     getModelsByType: (type: CustomModel['type']) => CustomModel[]
 }
 
+const LEGACY_PROVIDER_ID_MIGRATIONS: Readonly<Record<string, string>> = {
+    qwen: 'bailian',
+}
+
+function migrateLegacyProviderId(providerId: string): string {
+    const trimmed = providerId.trim()
+    if (!trimmed) return trimmed
+    const providerKey = getProviderKey(trimmed)
+    const migratedKey = LEGACY_PROVIDER_ID_MIGRATIONS[providerKey]
+    if (!migratedKey) return trimmed
+    return trimmed === providerKey
+        ? migratedKey
+        : `${migratedKey}${trimmed.slice(providerKey.length)}`
+}
+
+function mergeProviderEntries(existing: Provider, incoming: Provider): Provider {
+    return {
+        ...existing,
+        name: existing.name || incoming.name,
+        baseUrl: existing.baseUrl || incoming.baseUrl,
+        apiKey: existing.apiKey || incoming.apiKey,
+        hasApiKey: existing.hasApiKey === true || incoming.hasApiKey === true,
+        hidden: existing.hidden === true || incoming.hidden === true,
+        apiMode: existing.apiMode ?? incoming.apiMode,
+        gatewayRoute: existing.gatewayRoute ?? incoming.gatewayRoute,
+    }
+}
+
+function normalizeLegacyProviders(providers: Provider[]): Provider[] {
+    const orderedIds: string[] = []
+    const byId = new Map<string, Provider>()
+
+    for (const provider of providers) {
+        const normalizedProvider: Provider = {
+            ...provider,
+            id: migrateLegacyProviderId(provider.id),
+        }
+        const normalizedId = normalizedProvider.id.toLowerCase()
+        const existing = byId.get(normalizedId)
+        if (!existing) {
+            orderedIds.push(normalizedId)
+            byId.set(normalizedId, normalizedProvider)
+            continue
+        }
+        byId.set(normalizedId, mergeProviderEntries(existing, normalizedProvider))
+    }
+
+    return orderedIds
+        .map((id) => byId.get(id))
+        .filter((provider): provider is Provider => !!provider)
+}
+
 export function mergeProvidersForDisplay(
     savedProviders: Provider[],
     presetProviders: Provider[],
 ): Provider[] {
+    const normalizedSavedProviders = normalizeLegacyProviders(savedProviders)
     const merged: Provider[] = []
     const seenProviderIds = new Set<string>()
     const seenPresetKeys = new Set<string>()
 
-    for (const savedProvider of savedProviders) {
+    for (const savedProvider of normalizedSavedProviders) {
         if (seenProviderIds.has(savedProvider.id)) continue
         seenProviderIds.add(savedProvider.id)
 
@@ -85,7 +139,7 @@ export function mergeProvidersForDisplay(
         const matchedPreset = presetProviders.find((presetProvider) => presetProvider.id === providerKey)
         if (matchedPreset) {
             const apiKey = savedProvider.apiKey || ''
-            const providerBaseUrl = providerKey === 'minimax'
+            const providerBaseUrl = providerKey === 'minimax' || providerKey === 'grok'
                 ? matchedPreset.baseUrl
                 : (savedProvider.baseUrl || matchedPreset.baseUrl)
             merged.push({
@@ -387,7 +441,7 @@ export function useProviders(): UseProvidersReturn {
         }
         try {
             const currentModels = latestModelsRef.current
-            const currentProviders = latestProvidersRef.current
+            const currentProviders = normalizeLegacyProviders(latestProvidersRef.current)
             const currentDefaultModels = overrides?.defaultModels ?? latestDefaultModelsRef.current
             const currentWorkflowConcurrency = overrides?.workflowConcurrency ?? latestWorkflowConcurrencyRef.current
             const currentCapabilityDefaults = overrides?.capabilityDefaults ?? latestCapabilityDefaultsRef.current
@@ -444,8 +498,9 @@ export function useProviders(): UseProvidersReturn {
                     const existing = { ...(nextCap[modelKey] || {}) }
                     let changed = false
                     for (const def of capabilityFieldsToDefault) {
-                        if (existing[def.field] === undefined && def.options.length > 0) {
-                            existing[def.field] = def.options[0]
+                        const defaultOption = resolvePreferredCapabilityDefault(def.field, def.options)
+                        if (existing[def.field] === undefined && defaultOption !== undefined) {
+                            existing[def.field] = defaultOption
                             changed = true
                         }
                     }
@@ -484,8 +539,9 @@ export function useProviders(): UseProvidersReturn {
                     const existing = { ...(nextCap[modelKey] || {}) }
                     let changed = false
                     for (const def of capabilityFieldsToDefault) {
-                        if (existing[def.field] === undefined && def.options.length > 0) {
-                            existing[def.field] = def.options[0]
+                        const defaultOption = resolvePreferredCapabilityDefault(def.field, def.options)
+                        if (existing[def.field] === undefined && defaultOption !== undefined) {
+                            existing[def.field] = defaultOption
                             changed = true
                         }
                     }

@@ -100,6 +100,8 @@
   "baseUrl": "Base URL",
   "configureBaseUrl": "配置地址",
   "addModel": "添加模型",
+  "probeBeforeAdd": "保存前测试调用",
+  "probeBeforeAddHint": "关闭后将跳过测活，并按 chat-completions 协议保存该文本模型",
   "batchModeHalfPrice": "批量模式（价格减半）",
   "openaiCompatVideoOnlyHint": "仅支持 OpenAI 官方格式的图生视频模型。",
   "typeText": "文本",

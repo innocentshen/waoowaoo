@@ -50,6 +50,33 @@ describe('model-gateway openai-compat responses executor', () => {
     expect(String(firstCall?.[0])).toBe('https://compat.example.com/v1/responses')
   })
 
+  it('sends GPT-5.4 reasoning effort in responses format and omits temperature', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      output_text: 'hello',
+      usage: {
+        input_tokens: 4,
+        output_tokens: 2,
+      },
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await runOpenAICompatResponsesCompletion({
+      userId: 'user-1',
+      providerId: 'openai-compatible:node-1',
+      modelId: 'gpt-5.4',
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0.2,
+      reasoning: true,
+      reasoningEffort: 'xhigh',
+    })
+
+    const init = (fetchMock.mock.calls.at(0) as unknown as [string, RequestInit] | undefined)?.[1]
+    expect(init).toBeDefined()
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+    expect(body.reasoning).toEqual({ effort: 'xhigh' })
+    expect(body).not.toHaveProperty('temperature')
+  })
+
   it('throws status-bearing error when responses endpoint fails', async () => {
     const fetchMock = vi.fn(async () => new Response('not supported', { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)

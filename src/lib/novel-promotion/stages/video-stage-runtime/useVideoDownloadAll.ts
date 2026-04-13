@@ -33,7 +33,12 @@ export function useVideoDownloadAll({
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number } | null>(null)
 
-  const videosWithUrl = allPanels.filter((panel) => panel.videoUrl).length
+  const videosWithUrl = allPanels.reduce((total, panel) => {
+    const candidateCount = panel.videoCandidates?.length || 0
+    const baseCount = candidateCount > 0 ? candidateCount : (panel.videoUrl ? 1 : 0)
+    const lipSyncCount = panel.lipSyncVideoUrl ? 1 : 0
+    return total + baseCount + lipSyncCount
+  }, 0)
 
   const handleDownloadAllVideos = useCallback(async () => {
     if (videosWithUrl === 0) return

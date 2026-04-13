@@ -5,6 +5,7 @@ import type {
   VideoGenerationOptions,
   VideoModelOption,
   VideoPanel,
+  VideoReferenceSelection,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 import {
   normalizeVideoGenerationSelections,
@@ -52,7 +53,15 @@ interface UseVideoFirstLastFrameFlowParams {
       customPrompt?: string
     },
     generationOptions?: VideoGenerationOptions,
+    videoOperation?: {
+      mode: 'edit' | 'extend'
+      sourceCandidateId: string
+      instruction: string
+      extendDuration?: number
+    },
+    referenceSelection?: VideoReferenceSelection,
     panelId?: string,
+    count?: number,
   ) => Promise<void>
   t: (key: string) => string
 }
@@ -210,7 +219,9 @@ export function useVideoFirstLastFrameFlow({
     lastPanelIndex: number,
     panelKey: string,
     generationOptions?: VideoGenerationOptions,
+    referenceSelection?: VideoReferenceSelection,
     firstPanelId?: string,
+    count?: number,
   ) => {
     const persistedCustomPrompt = allPanels.find(
       (panel) =>
@@ -223,7 +234,7 @@ export function useVideoFirstLastFrameFlow({
       lastFramePanelIndex: lastPanelIndex,
       flModel,
       customPrompt,
-    }, generationOptions ?? flGenerationOptions, firstPanelId)
+    }, generationOptions ?? flGenerationOptions, undefined, referenceSelection, firstPanelId, count)
   }, [allPanels, flCustomPrompts, flGenerationOptions, flModel, onGenerateVideo])
 
   const getDefaultFlPrompt = useCallback((firstPrompt?: string, lastPrompt?: string): string => {

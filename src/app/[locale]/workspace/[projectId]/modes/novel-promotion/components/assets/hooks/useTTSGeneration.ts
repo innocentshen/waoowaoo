@@ -11,11 +11,11 @@ import { useTranslations } from 'next-intl'
 
 import { useState } from 'react'
 import {
-    useProjectAssets,
     useRefreshProjectAssets,
     useUpdateProjectCharacterVoiceSettings,
     useSaveProjectDesignedVoice,
 } from '@/lib/query/hooks'
+import { useAssetStageProjectAssets } from '../AssetStageProjectAssetsContext'
 
 interface VoiceDesignCharacter {
     id: string
@@ -41,8 +41,8 @@ export function useTTSGeneration({
 }: UseTTSGenerationProps) {
     const t = useTranslations('assets')
     // 🔥 直接订阅缓存 - 消除 props drilling
-    const { data: assets } = useProjectAssets(projectId)
-    const characters = assets?.characters ?? []
+    const assets = useAssetStageProjectAssets(projectId)
+    const characters = assets.characters
 
     // 🔥 使用刷新函数
     const refreshAssets = useRefreshProjectAssets(projectId)

@@ -14,6 +14,7 @@ import {
 } from './voice-analyze-helpers'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
 
@@ -32,12 +33,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     throw new Error('episodeId is required')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

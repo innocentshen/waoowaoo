@@ -14,7 +14,12 @@ const workerMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
 }))
 
+const configServiceMock = vi.hoisted(() => ({
+  resolveProjectModelCapabilityGenerationOptions: vi.fn(async () => ({})),
+}))
+
 vi.mock('@/lib/ai-runtime', () => aiRuntimeMock)
+vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
   withInternalLLMStreamCallbacks: vi.fn(async (_callbacks: unknown, fn: () => Promise<unknown>) => await fn()),
 }))
@@ -77,8 +82,29 @@ describe('worker ai-story-expand behavior', () => {
     expect(aiRuntimeMock.executeAiTextStep).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       model: 'provider::analysis-model',
+      reasoningEffort: undefined,
       projectId: 'home-ai-write',
       action: 'ai_story_expand',
+    }))
+  })
+
+  it('applies configured llm reasoning effort to ai story expand', async () => {
+    configServiceMock.resolveProjectModelCapabilityGenerationOptions.mockResolvedValueOnce({
+      reasoningEffort: 'minimal',
+    })
+
+    const job = buildJob({ prompt: 'prompt text', analysisModel: 'gemini-compatible::gemini-3.1-pro-preview-gcp' })
+    await handleAiStoryExpandTask(job)
+
+    expect(configServiceMock.resolveProjectModelCapabilityGenerationOptions).toHaveBeenCalledWith({
+      projectId: 'home-ai-write',
+      userId: 'user-1',
+      modelType: 'llm',
+      modelKey: 'gemini-compatible::gemini-3.1-pro-preview-gcp',
+    })
+    expect(aiRuntimeMock.executeAiTextStep).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'gemini-compatible::gemini-3.1-pro-preview-gcp',
+      reasoningEffort: 'minimal',
     }))
   })
 })

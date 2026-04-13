@@ -22,16 +22,36 @@ import {
 
 export type ParsedModelKey = { provider: string, modelId: string }
 
+const LEGACY_PROVIDER_ID_MIGRATIONS: Readonly<Record<string, string>> = {
+  qwen: 'bailian',
+}
+
+function migrateLegacyProviderId(providerId: string): string {
+  const trimmed = providerId.trim()
+  if (!trimmed) return trimmed
+  const separatorIndex = trimmed.indexOf(':')
+  const providerKey = (separatorIndex === -1 ? trimmed : trimmed.slice(0, separatorIndex)).toLowerCase()
+  const migratedKey = LEGACY_PROVIDER_ID_MIGRATIONS[providerKey]
+  if (!migratedKey) return trimmed
+  return separatorIndex === -1
+    ? migratedKey
+    : `${migratedKey}${trimmed.slice(separatorIndex)}`
+}
+
+function migrateParsedModelKey(parsed: { provider: string; modelId: string }): ParsedModelKey {
+  return {
+    provider: migrateLegacyProviderId(parsed.provider),
+    modelId: parsed.modelId,
+  }
+}
+
 /**
  * 解析模型复合 Key（严格模式，仅接受 provider::modelId）
  */
 export function parseModelKey(key: string | null | undefined): ParsedModelKey | null {
   const parsed = parseModelKeyStrict(key)
   if (!parsed) return null
-  return {
-    provider: parsed.provider,
-    modelId: parsed.modelId,
-  }
+  return migrateParsedModelKey(parsed)
 }
 
 /**
@@ -75,13 +95,19 @@ function normalizeCapabilitySelections(raw: unknown): CapabilitySelections {
 
     const selection: Record<string, CapabilityValue> = {}
     for (const [field, value] of Object.entries(rawSelection)) {
-      if (field === 'aspectRatio') continue
       if (!isCapabilityValue(value)) continue
       selection[field] = value
     }
 
     if (Object.keys(selection).length > 0) {
-      normalized[modelKey] = selection
+      const parsedModelKey = parseModelKey(modelKey)
+      const normalizedModelKey = parsedModelKey
+        ? composeModelKey(parsedModelKey.provider, parsedModelKey.modelId)
+        : modelKey
+      normalized[normalizedModelKey] = {
+        ...(normalized[normalizedModelKey] || {}),
+        ...selection,
+      }
     }
   }
 
@@ -195,15 +221,17 @@ export function resolveModelCapabilityGenerationOptions(input: {
   capabilityOverrides?: CapabilitySelections
   runtimeSelections?: Record<string, CapabilityValue>
 }): Record<string, CapabilityValue> {
-  const parsed = parseModelKeyStrict(input.modelKey)
+  const parsedRaw = parseModelKeyStrict(input.modelKey)
+  const parsed = parsedRaw ? migrateParsedModelKey(parsedRaw) : null
   if (!parsed) {
     throw new Error(`MODEL_KEY_INVALID: ${input.modelKey}`)
   }
+  const normalizedModelKey = composeModelKey(parsed.provider, parsed.modelId)
 
   const capabilities = findBuiltinCapabilities(input.modelType, parsed.provider, parsed.modelId)
   const resolved = resolveGenerationOptionsForModel({
     modelType: input.modelType,
-    modelKey: input.modelKey,
+    modelKey: normalizedModelKey,
     capabilities,
     capabilityDefaults: input.capabilityDefaults,
     capabilityOverrides: input.capabilityOverrides,

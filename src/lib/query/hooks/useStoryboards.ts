@@ -6,7 +6,7 @@ import { checkApiResponse } from '@/lib/error-handler'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import { clearTaskTargetOverlay, upsertTaskTargetOverlay } from '../task-target-overlay'
 import type { MediaRef } from '@/types/project'
-import { apiFetch } from '@/lib/api-fetch'
+import { apiFetch, getPageLocale } from '@/lib/api-fetch'
 
 // ============ 类型定义 ============
 export interface PanelCandidate {
@@ -29,7 +29,7 @@ export interface StoryboardPanel {
     voiceUrl: string | null
     voiceMedia?: MediaRef | null
     videoUrl: string | null
-    videoGenerationMode?: 'normal' | 'firstlastframe' | null
+    videoGenerationMode?: 'normal' | 'firstlastframe' | 'edit' | 'extend' | null
     videoMedia?: MediaRef | null
     imageTaskRunning?: boolean
     videoTaskRunning?: boolean
@@ -51,10 +51,26 @@ export interface StoryboardData {
 
 type VideoGenerationOptionValue = string | number | boolean
 type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
+type VideoReferenceSelection = {
+    includeCharacters?: boolean
+    includeLocation?: boolean
+    includeProps?: boolean
+    characters?: Array<{ name: string; appearance?: string }>
+    locations?: string[]
+    props?: string[]
+}
+type VideoOperationRequest = {
+    mode: 'edit' | 'extend'
+    sourceCandidateId: string
+    instruction: string
+    extendDuration?: number
+}
 
 interface BatchVideoGenerationParams {
     videoModel: string
+    count?: number
     generationOptions?: VideoGenerationOptions
+    referenceSelection?: VideoReferenceSelection
 }
 
 // ============ 查询 Hooks ============
@@ -158,7 +174,10 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             panelIndex: number
             panelId?: string
             videoModel: string
+            count?: number
             generationOptions?: VideoGenerationOptions
+            videoOperation?: VideoOperationRequest
+            referenceSelection?: VideoReferenceSelection
             firstLastFrame?: {
                 lastFrameStoryboardId: string
                 lastFramePanelIndex: number
@@ -172,6 +191,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             const requestBody: {
                 storyboardId: string
                 panelIndex: number
+                locale: string
                 firstLastFrame?: {
                     lastFrameStoryboardId: string
                     lastFramePanelIndex: number
@@ -179,11 +199,16 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                     customPrompt?: string
                 }
                 videoModel: string
+                count?: number
                 generationOptions?: VideoGenerationOptions
+                videoOperation?: VideoOperationRequest
+                referenceSelection?: VideoReferenceSelection
             } = {
                 storyboardId: params.storyboardId,
                 panelIndex: params.panelIndex,
+                locale: getPageLocale(),
                 videoModel: params.videoModel,
+                count: params.count,
             }
 
             // 如果是首尾帧模式
@@ -193,6 +218,22 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
 
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions
+            }
+
+            if (params.videoOperation) {
+                requestBody.videoOperation = params.videoOperation
+                if (params.videoOperation.mode === 'extend') {
+                    requestBody.generationOptions = {
+                        ...(requestBody.generationOptions || {}),
+                        ...(typeof params.videoOperation.extendDuration === 'number'
+                            ? { duration: params.videoOperation.extendDuration }
+                            : {}),
+                    }
+                }
+            }
+
+            if (params.referenceSelection && typeof params.referenceSelection === 'object') {
+                requestBody.referenceSelection = params.referenceSelection
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {
@@ -249,15 +290,23 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
             const requestBody: {
                 all: boolean
                 episodeId: string
+                locale: string
                 videoModel: string
+                count?: number
                 generationOptions?: VideoGenerationOptions
+                referenceSelection?: VideoReferenceSelection
             } = {
                 all: true,
                 episodeId,
+                locale: getPageLocale(),
                 videoModel: params.videoModel,
+                count: params.count,
             }
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions
+            }
+            if (params.referenceSelection && typeof params.referenceSelection === 'object') {
+                requestBody.referenceSelection = params.referenceSelection
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {
@@ -317,8 +366,9 @@ export function useRefreshStoryboards(episodeId: string | null) {
 
     return () => {
         if (episodeId) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.storyboards.all(episodeId) })
+            return queryClient.invalidateQueries({ queryKey: queryKeys.storyboards.all(episodeId) })
         }
+        return Promise.resolve()
     }
 }
 

@@ -2,10 +2,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
-import { useProjectAssets, useProjectData } from '@/lib/query/hooks'
+import { useProjectData } from '@/lib/query/hooks'
 import { AppIcon } from '@/components/ui/icons'
 import JSZip from 'jszip'
 import { logError as _logError } from '@/lib/logging/core'
+import { useAssetStageProjectAssets } from './AssetStageProjectAssetsContext'
 
 /**
  * AssetToolbar - 资产管理工具栏组件
@@ -167,15 +168,15 @@ export default function AssetToolbar({
     episodes,
 }: AssetToolbarProps) {
     const t = useTranslations('assets')
-    const { data: assets } = useProjectAssets(projectId)
+    const assets = useAssetStageProjectAssets(projectId)
     const { data: projectData } = useProjectData(projectId)
     const projectName = projectData?.name
     const [isDownloading, setIsDownloading] = useState(false)
 
     const handleDownloadAll = async () => {
-        const characters = assets?.characters ?? []
-        const locations = assets?.locations ?? []
-        const props = assets?.props ?? []
+        const characters = assets.characters
+        const locations = assets.locations
+        const props = assets.props
 
         const imageEntries: Array<{ filename: string; url: string }> = []
 

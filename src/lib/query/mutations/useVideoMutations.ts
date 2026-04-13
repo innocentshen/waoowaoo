@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { resolveTaskResponse } from '@/lib/task/client'
 import { queryKeys } from '../keys'
-import { invalidateQueryTemplates, requestJsonWithError } from './mutation-shared'
+import { invalidateQueryTemplates, requestJsonWithError, requestTaskResponseWithError } from './mutation-shared'
 
 /**
  * 获取剧集可下载视频列表（项目）
@@ -80,6 +81,92 @@ export function useUpdateProjectPanelVideoPrompt(projectId: string) {
       ),
     onSettled: () => {
       invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+    },
+  })
+}
+
+export function useAiGenerateProjectVideoPrompt(projectId: string) {
+  return useMutation({
+    mutationFn: async (payload: {
+      panelId: string
+      lastPanelId?: string
+      currentPrompt?: string
+      currentVideoPrompt?: string
+      modifyInstruction: string
+    }) => {
+      const response = await requestTaskResponseWithError(
+        `/api/novel-promotion/${projectId}/ai-modify-shot-prompt`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            mode: 'videoPrompt',
+          }),
+        },
+        'generate video prompt failed',
+      )
+      return await resolveTaskResponse<{
+        generatedVideoPrompt: string
+      }>(response)
+    },
+  })
+}
+
+export function useSelectProjectPanelVideoCandidate(projectId: string, episodeId?: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      panelId: string
+      candidateId: string
+    }) =>
+      await requestJsonWithError(
+        `/api/novel-promotion/${projectId}/panel/video-candidate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            action: 'select',
+          }),
+        },
+        'select video candidate failed',
+      ),
+    onSettled: () => {
+      invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+      if (episodeId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
+      }
+    },
+  })
+}
+
+export function useDeleteProjectPanelVideoCandidate(projectId: string, episodeId?: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      panelId: string
+      candidateId: string
+    }) =>
+      await requestJsonWithError(
+        `/api/novel-promotion/${projectId}/panel/video-candidate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            action: 'delete',
+          }),
+        },
+        'delete video candidate failed',
+      ),
+    onSettled: () => {
+      invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+      if (episodeId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
+      }
     },
   })
 }

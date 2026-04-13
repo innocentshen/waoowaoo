@@ -195,6 +195,76 @@ const OPTIONAL_PRICING_PROVIDER_KEYS = new Set([
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'grok'])
 const RETIRED_PROVIDER_KEYS = new Set(['qwen'])
 const MINIMAX_OFFICIAL_BASE_URL = 'https://api.minimaxi.com/v1'
+const LEGACY_PROVIDER_ID_MIGRATIONS: Readonly<Record<string, string>> = {
+  qwen: 'bailian',
+}
+
+function migrateLegacyProviderId(providerId: string): string {
+  const trimmed = readTrimmedString(providerId)
+  if (!trimmed) return trimmed
+  const providerKey = getProviderKey(trimmed).toLowerCase()
+  const migratedKey = LEGACY_PROVIDER_ID_MIGRATIONS[providerKey]
+  if (!migratedKey) return trimmed
+  return trimmed === providerKey
+    ? migratedKey
+    : `${migratedKey}${trimmed.slice(providerKey.length)}`
+}
+
+function migrateLegacyParsedModelKey(parsed: {
+  provider: string
+  modelId: string
+  modelKey: string
+}): {
+  provider: string
+  modelId: string
+  modelKey: string
+} {
+  const provider = migrateLegacyProviderId(parsed.provider)
+  if (provider === parsed.provider) return parsed
+  return {
+    provider,
+    modelId: parsed.modelId,
+    modelKey: composeModelKey(provider, parsed.modelId),
+  }
+}
+
+function migrateLegacyModelKey(modelKey: string): string {
+  const parsed = parseModelKeyStrict(modelKey)
+  if (!parsed) return modelKey
+  return migrateLegacyParsedModelKey(parsed).modelKey
+}
+
+function mergeStoredProviders(existing: StoredProvider, incoming: StoredProvider): StoredProvider {
+  return {
+    ...existing,
+    name: existing.name || incoming.name,
+    baseUrl: existing.baseUrl || incoming.baseUrl,
+    apiKey: existing.apiKey || incoming.apiKey,
+    hidden: existing.hidden === true || incoming.hidden === true,
+    apiMode: existing.apiMode ?? incoming.apiMode,
+    gatewayRoute: existing.gatewayRoute ?? incoming.gatewayRoute,
+  }
+}
+
+function dedupeStoredProviders(providers: StoredProvider[]): StoredProvider[] {
+  const orderedKeys: string[] = []
+  const byId = new Map<string, StoredProvider>()
+
+  for (const provider of providers) {
+    const normalizedId = provider.id.toLowerCase()
+    const existing = byId.get(normalizedId)
+    if (!existing) {
+      orderedKeys.push(normalizedId)
+      byId.set(normalizedId, provider)
+      continue
+    }
+    byId.set(normalizedId, mergeStoredProviders(existing, provider))
+  }
+
+  return orderedKeys
+    .map((key) => byId.get(key))
+    .filter((provider): provider is StoredProvider => !!provider)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -749,10 +819,11 @@ function normalizeStoredModel(raw: unknown, index: number, options?: { strictCus
     })
   }
 
-  const providerFromField = readTrimmedString(raw.provider)
+  const providerFromField = migrateLegacyProviderId(readTrimmedString(raw.provider))
   const modelIdFromField = readTrimmedString(raw.modelId)
   const modelKeyFromField = readTrimmedString(raw.modelKey)
-  const parsedModelKey = parseModelKeyStrict(modelKeyFromField)
+  const parsedModelKeyRaw = parseModelKeyStrict(modelKeyFromField)
+  const parsedModelKey = parsedModelKeyRaw ? migrateLegacyParsedModelKey(parsedModelKeyRaw) : null
 
   const provider = providerFromField || parsedModelKey?.provider || ''
   const modelId = modelIdFromField || parsedModelKey?.modelId || ''
@@ -976,8 +1047,279 @@ function isOpenAICompatibleMediaTemplateModel(model: StoredModel): boolean {
   return model.type === 'image' || model.type === 'video'
 }
 
-function getDefaultMediaTemplate(type: 'image' | 'video'): OpenAICompatMediaTemplate {
-  if (type === 'image') {
+const GROK2API_IMAGE_GENERATION_MODEL_IDS = new Set([
+  'grok-imagine-1.0',
+  'grok-imagine-1.0-fast',
+  'grok-imagine-image-lite',
+  'grok-imagine-image',
+  'grok-imagine-image-pro',
+])
+const GROK2API_IMAGE_EDIT_MODEL_IDS = new Set([
+  'grok-imagine-1.0-edit',
+  'grok-imagine-image-edit',
+])
+const GROK2API_VIDEO_MODEL_IDS = new Set([
+  'grok-imagine-1.0-video',
+  'grok-imagine-video',
+])
+
+function getGenericMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate {
+  if (model.type === 'image') {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/generations',
+        contentType: 'application/json',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  return {
+    version: 1,
+    mediaType: 'video',
+    mode: 'async',
+    create: {
+      method: 'POST',
+      path: '/videos',
+      contentType: 'multipart/form-data',
+      multipartFileFields: ['input_reference'],
+      bodyTemplate: {
+        model: '{{model}}',
+        prompt: '{{prompt}}',
+        seconds: '{{duration}}',
+        size: '{{size}}',
+        input_reference: '{{image}}',
+      },
+    },
+    status: {
+      method: 'GET',
+      path: '/videos/{{task_id}}',
+    },
+    content: {
+      method: 'GET',
+      path: '/videos/{{task_id}}/content',
+    },
+    response: {
+      taskIdPath: '$.id',
+      statusPath: '$.status',
+      errorPath: '$.error.message',
+    },
+    polling: {
+      intervalMs: 3000,
+      timeoutMs: 600000,
+      doneStates: ['completed', 'succeeded'],
+      failStates: ['failed', 'error', 'canceled'],
+    },
+  }
+}
+
+function resolveExistingMediaTemplate(
+  model: StoredModel,
+  existingTemplate: OpenAICompatMediaTemplate,
+): OpenAICompatMediaTemplate {
+  const desiredTemplate = getDefaultMediaTemplate(model)
+  if (areMediaTemplatesEqual(existingTemplate, desiredTemplate)) {
+    return existingTemplate
+  }
+
+  const staleCandidates = [
+    getGenericMediaTemplate(model),
+    getLegacyGrok2ApiMediaTemplate(model),
+  ].filter((template): template is OpenAICompatMediaTemplate => !!template)
+
+  return staleCandidates.some((template) => areMediaTemplatesEqual(existingTemplate, template))
+    ? desiredTemplate
+    : existingTemplate
+}
+
+function getLegacyGrok2ApiMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate | null {
+  const modelId = readTrimmedString(model.modelId)
+
+  if (model.type === 'image' && GROK2API_IMAGE_EDIT_MODEL_IDS.has(modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/edits',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['image'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          image: '{{images}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'video' && GROK2API_VIDEO_MODEL_IDS.has(modelId)) {
+    return {
+      version: 1,
+      mediaType: 'video',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          quality: '{{quality}}',
+          input_reference: '{{image}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.url',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  return null
+}
+
+function areMediaTemplatesEqual(
+  left: OpenAICompatMediaTemplate,
+  right: OpenAICompatMediaTemplate,
+): boolean {
+  const normalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map((item) => normalize(item))
+    }
+    if (!value || typeof value !== 'object') {
+      return value
+    }
+    const record = value as Record<string, unknown>
+    const output: Record<string, unknown> = {}
+    for (const key of Object.keys(record).sort()) {
+      output[key] = normalize(record[key])
+    }
+    return output
+  }
+
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+}
+
+function getDefaultMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate {
+  const modelId = readTrimmedString(model.modelId)
+
+  if (model.type === 'image' && GROK2API_IMAGE_EDIT_MODEL_IDS.has(modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/edits',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['image[]'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          'image[]': '{{images}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'image' && GROK2API_IMAGE_GENERATION_MODEL_IDS.has(modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/generations',
+        contentType: 'application/json',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'video' && GROK2API_VIDEO_MODEL_IDS.has(modelId)) {
+    return {
+      version: 1,
+      mediaType: 'video',
+      mode: 'async',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          resolution_name: '{{resolution}}',
+          preset: 'normal',
+          input_reference: '{{image}}',
+        },
+      },
+      status: {
+        method: 'GET',
+        path: '/videos/{{task_id}}',
+      },
+      content: {
+        method: 'GET',
+        path: '/videos/{{task_id}}/content',
+      },
+      response: {
+        taskIdPath: '$.id',
+        statusPath: '$.status',
+        errorPath: '$.error.message',
+      },
+      polling: {
+        intervalMs: 3000,
+        timeoutMs: 600000,
+        doneStates: ['completed'],
+        failStates: ['failed'],
+      },
+    }
+  }
+
+  if (model.type === 'image') {
     return {
       version: 1,
       mediaType: 'image',
@@ -1125,17 +1467,21 @@ function resolveStoredMediaTemplates(
 
     const existing = existingByModelKey.get(model.modelKey)
     if (existing?.compatMediaTemplate) {
+      const compatMediaTemplate = resolveExistingMediaTemplate(model, existing.compatMediaTemplate)
+      const templateChanged = !areMediaTemplatesEqual(existing.compatMediaTemplate, compatMediaTemplate)
       return {
         ...model,
-        compatMediaTemplate: existing.compatMediaTemplate,
-        compatMediaTemplateCheckedAt: existing.compatMediaTemplateCheckedAt || checkedAtFallback,
+        compatMediaTemplate,
+        compatMediaTemplateCheckedAt: templateChanged
+          ? checkedAtFallback
+          : (existing.compatMediaTemplateCheckedAt || checkedAtFallback),
         compatMediaTemplateSource: existing.compatMediaTemplateSource || 'manual',
       }
     }
 
     return {
       ...model,
-      compatMediaTemplate: getDefaultMediaTemplate(expectedMediaType),
+      compatMediaTemplate: getDefaultMediaTemplate(model),
       compatMediaTemplateCheckedAt: checkedAtFallback,
       compatMediaTemplateSource: 'manual',
     }
@@ -1240,7 +1586,8 @@ function validateDefaultModelKey(field: DefaultModelField, value: unknown): stri
   if (value === undefined) return null
   const modelKey = readTrimmedString(value)
   if (!modelKey) return null
-  const parsed = parseModelKeyStrict(modelKey)
+  const parsedRaw = parseModelKeyStrict(modelKey)
+  const parsed = parsedRaw ? migrateLegacyParsedModelKey(parsedRaw) : null
   if (!parsed) {
     throw new ApiError('INVALID_PARAMS', {
       code: 'MODEL_KEY_INVALID',
@@ -1248,6 +1595,13 @@ function validateDefaultModelKey(field: DefaultModelField, value: unknown): stri
     })
   }
   return parsed.modelKey
+}
+
+function readStoredDefaultModelKey(value: unknown): string {
+  const modelKey = readTrimmedString(value)
+  if (!modelKey) return ''
+  const migrated = migrateLegacyModelKey(modelKey)
+  return parseModelKeyStrict(migrated) ? migrated : ''
 }
 
 function normalizeDefaultModelsInput(rawDefaultModels: unknown): DefaultModelsPayload {
@@ -1417,7 +1771,7 @@ function parseStoredProviders(rawProviders: string | null | undefined): StoredPr
       })
     }
 
-    const id = readTrimmedString(raw.id)
+    const id = migrateLegacyProviderId(readTrimmedString(raw.id))
     const name = readTrimmedString(raw.name)
     if (!id || !name) {
       throw new ApiError('INVALID_PARAMS', {
@@ -1480,7 +1834,7 @@ function parseStoredProviders(rawProviders: string | null | undefined): StoredPr
     })
   }
 
-  return normalized
+  return dedupeStoredProviders(normalized)
 }
 
 function parseStoredModels(rawModels: string | null | undefined): StoredModel[] {
@@ -1507,10 +1861,7 @@ function parseStoredModels(rawModels: string | null | undefined): StoredModel[] 
   return normalized
 }
 
-function normalizeCapabilitySelectionsInput(
-  raw: unknown,
-  options?: { allowLegacyAspectRatio?: boolean },
-): CapabilitySelections {
+function normalizeCapabilitySelectionsInput(raw: unknown): CapabilitySelections {
   if (raw === undefined || raw === null) return {}
   if (!isRecord(raw)) {
     throw new ApiError('INVALID_PARAMS', {
@@ -1521,6 +1872,7 @@ function normalizeCapabilitySelectionsInput(
 
   const normalized: CapabilitySelections = {}
   for (const [modelKey, rawSelection] of Object.entries(raw)) {
+    const normalizedModelKey = migrateLegacyModelKey(modelKey)
     if (!isRecord(rawSelection)) {
       throw new ApiError('INVALID_PARAMS', {
         code: 'CAPABILITY_SELECTION_INVALID',
@@ -1530,13 +1882,6 @@ function normalizeCapabilitySelectionsInput(
 
     const selection: Record<string, string | number | boolean> = {}
     for (const [field, value] of Object.entries(rawSelection)) {
-      if (field === 'aspectRatio') {
-        if (options?.allowLegacyAspectRatio) continue
-        throw new ApiError('INVALID_PARAMS', {
-          code: 'CAPABILITY_FIELD_INVALID',
-          field: `capabilityDefaults.${modelKey}.${field}`,
-        })
-      }
       if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
         throw new ApiError('INVALID_PARAMS', {
           code: 'CAPABILITY_SELECTION_INVALID',
@@ -1547,7 +1892,10 @@ function normalizeCapabilitySelectionsInput(
     }
 
     if (Object.keys(selection).length > 0) {
-      normalized[modelKey] = selection
+      normalized[normalizedModelKey] = {
+        ...(normalized[normalizedModelKey] || {}),
+        ...selection,
+      }
     }
   }
 
@@ -1567,7 +1915,7 @@ function parseStoredCapabilitySelections(raw: string | null | undefined, field: 
     })
   }
 
-  return normalizeCapabilitySelectionsInput(parsed, { allowLegacyAspectRatio: true })
+  return normalizeCapabilitySelectionsInput(parsed)
 }
 
 function serializeCapabilitySelections(selections: CapabilitySelections): string | null {
@@ -1587,14 +1935,15 @@ function resolveCapabilityContextForModelKey(
   modelMap: Map<string, StoredModel>,
   modelKey: string,
 ) {
-  const model = modelMap.get(modelKey)
+  const normalizedModelKey = migrateLegacyModelKey(modelKey)
+  const model = modelMap.get(normalizedModelKey)
   if (model) {
     return resolveBuiltinModelContext(model.type, model.modelKey) || null
   }
 
-  if (!parseModelKeyStrict(modelKey)) return null
+  if (!parseModelKeyStrict(normalizedModelKey)) return null
   for (const modelType of CAPABILITY_MODEL_TYPES) {
-    const context = resolveBuiltinModelContext(modelType, modelKey)
+    const context = resolveBuiltinModelContext(modelType, normalizedModelKey)
     if (context) return context
   }
   return null
@@ -1729,15 +2078,15 @@ export const GET = apiHandler(async () => {
   }
 
   const rawDefaults: DefaultModelsPayload = {
-    analysisModel: pref?.analysisModel || '',
-    characterModel: pref?.characterModel || '',
-    locationModel: pref?.locationModel || '',
-    storyboardModel: pref?.storyboardModel || '',
-    editModel: pref?.editModel || '',
-    videoModel: pref?.videoModel || '',
-    audioModel: pref?.audioModel || '',
-    lipSyncModel: pref?.lipSyncModel || DEFAULT_LIPSYNC_MODEL_KEY,
-    voiceDesignModel: pref?.voiceDesignModel || '',
+    analysisModel: readStoredDefaultModelKey(pref?.analysisModel),
+    characterModel: readStoredDefaultModelKey(pref?.characterModel),
+    locationModel: readStoredDefaultModelKey(pref?.locationModel),
+    storyboardModel: readStoredDefaultModelKey(pref?.storyboardModel),
+    editModel: readStoredDefaultModelKey(pref?.editModel),
+    videoModel: readStoredDefaultModelKey(pref?.videoModel),
+    audioModel: readStoredDefaultModelKey(pref?.audioModel),
+    lipSyncModel: readStoredDefaultModelKey(pref?.lipSyncModel) || DEFAULT_LIPSYNC_MODEL_KEY,
+    voiceDesignModel: readStoredDefaultModelKey(pref?.voiceDesignModel),
   }
   const defaultModels = billingMode === 'OFF'
     ? rawDefaults

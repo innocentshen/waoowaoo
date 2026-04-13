@@ -12,6 +12,7 @@ import { withPrismaRetry } from '@/lib/prisma-retry'
 import { extractModelKey } from '@/lib/config-service'
 import { getErrorSpec, type UnifiedErrorCode } from '@/lib/errors/codes'
 import { getLogContext, setLogContext } from '@/lib/logging/context'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 // ============================================================
 // 类型定义
@@ -236,14 +237,11 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
 
     // 3. 获取项目（包含 novelPromotionData 及其可选关联）
     const hasIncludes = Object.keys(novelPromotionIncludes).length > 0
-    const project = await withPrismaRetry(() =>
-        prisma.project.findUnique({
-            where: { id: projectId },
-            include: {
-                novelPromotionData: hasIncludes
-                    ? { include: novelPromotionIncludes }
-                    : true
-            }
+    const project = await withPrismaRetry(() => findProjectBaseById(projectId))
+    const novelData = await withPrismaRetry(() =>
+        prisma.novelPromotionProject.findUnique({
+            where: { projectId },
+            ...(hasIncludes ? { include: novelPromotionIncludes } : {})
         })
     )
 
@@ -258,12 +256,12 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
     }
 
     // 6. NovelPromotionData 检查
-    if (!project.novelPromotionData) {
+    if (!novelData) {
         return notFound('Novel promotion data')
     }
 
     // 统一返回 modelKey（provider::modelId），禁止降级为纯 modelId
-    const rawNovelData = project.novelPromotionData as {
+    const rawNovelData = novelData as {
         analysisModel?: string | null
         characterModel?: string | null
         locationModel?: string | null
@@ -325,11 +323,7 @@ export async function requireProjectAuthLight(
     }
     bindAuthLogContext(session, projectId)
 
-    const project = await withPrismaRetry(() =>
-        prisma.project.findUnique({
-            where: { id: projectId }
-        })
-    )
+    const project = await withPrismaRetry(() => findProjectBaseById(projectId))
 
     if (!project) {
         return notFound('Project')

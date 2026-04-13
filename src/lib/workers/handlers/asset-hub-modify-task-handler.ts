@@ -2,6 +2,7 @@ import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
+import { getProviderKey } from '@/lib/api-config'
 import {
   assertTaskActive,
   getUserModels,
@@ -11,6 +12,7 @@ import {
 } from '../utils'
 import {
   normalizeReferenceImagesForGeneration,
+  normalizeReferenceImagesForOriginalMedia,
 } from '@/lib/media/outbound-image'
 import {
   type LocationAvailableSlot,
@@ -84,6 +86,17 @@ function readModifyInstruction(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function shouldUseOriginalMediaReferences(modelKey: string, extraReferenceCount: number): boolean {
+  return extraReferenceCount > 0 && getProviderKey(modelKey).toLowerCase() === 'grok'
+}
+
+async function normalizeEditReferenceExtras(modelKey: string, inputs: string[]): Promise<string[]> {
+  if (shouldUseOriginalMediaReferences(modelKey, inputs.length)) {
+    return await normalizeReferenceImagesForOriginalMedia(inputs)
+  }
+  return await normalizeReferenceImagesForGeneration(inputs)
+}
+
 export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const userId = job.data.userId
@@ -123,7 +136,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
+    const normalizedExtras = await normalizeEditReferenceExtras(editModel, extraReferenceInputs)
     const referenceImages = Array.from(new Set([currentUrl, ...normalizedExtras]))
     const currentDescription = readIndexedDescription({
       descriptions: appearance.descriptions,
@@ -213,7 +226,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
+    const normalizedExtras = await normalizeEditReferenceExtras(editModel, extraReferenceInputs)
     const referenceImages = Array.from(new Set([currentUrl, ...normalizedExtras]))
 
     const isProp = payload.type === 'prop'

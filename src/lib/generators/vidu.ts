@@ -373,6 +373,9 @@ function normalizeOptionalBoolean(raw: unknown, field: string): boolean | undefi
 
 export class ViduVideoGenerator extends BaseVideoGenerator {
     protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+        if (!params.imageUrl) {
+            throw new Error('VIDU_VIDEO_INPUT_REQUIRED: imageUrl')
+        }
         const { userId, imageUrl, prompt = '', options = {} } = params
 
         const { apiKey } = await getProviderConfig(userId, 'vidu')

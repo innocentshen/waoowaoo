@@ -43,16 +43,19 @@ vi.mock('@/lib/logging/core', () => ({
   logError: (...args: unknown[]) => logErrorMock(...args),
 }))
 
-vi.mock('@/lib/query/hooks', () => ({
-  useProjectAssets: () => ({
-    data: {
-      characters: [{
-        id: 'character-1',
-        name: 'Hero',
-        customVoiceUrl: null,
-      }],
-    },
+vi.mock('@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/AssetStageProjectAssetsContext', () => ({
+  useAssetStageProjectAssets: () => ({
+    characters: [{
+      id: 'character-1',
+      name: 'Hero',
+      customVoiceUrl: null,
+    }],
+    locations: [],
+    props: [],
   }),
+}))
+
+vi.mock('@/lib/query/hooks', () => ({
   useRefreshProjectAssets: () => refreshAssetsMock,
   useUpdateProjectCharacterVoiceSettings: () => ({
     mutateAsync: updateVoiceSettingsMutateAsyncMock,

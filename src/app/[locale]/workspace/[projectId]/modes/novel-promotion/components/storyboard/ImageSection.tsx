@@ -1,6 +1,7 @@
 'use client'
+
+import { memo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
 import './ImageSection.css'
 import { GlassButton } from '@/components/ui/primitives'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
@@ -22,12 +23,15 @@ interface ImageSectionProps {
   shotType: string
   videoRatio: string
   isDeleting: boolean
+  isUploadingImage: boolean
   isModifying: boolean
   isSubmittingPanelImageTask: boolean
   failedError: string | null
   candidateData: PanelCandidateData | null
   previousImageUrl?: string | null
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onUploadImage: (panelId: string, file: File) => Promise<void>
+  onOpenSourcePanelPicker: () => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onSelectCandidateIndex: (panelId: string, index: number) => void
@@ -38,19 +42,48 @@ interface ImageSectionProps {
   onPreviewImage?: (url: string) => void
 }
 
-export default function ImageSection({
+function areCandidateDataEqual(previous: PanelCandidateData | null, next: PanelCandidateData | null) {
+  if (previous === next) return true
+  if (!previous || !next) return previous === next
+  if (previous.selectedIndex !== next.selectedIndex) return false
+  if (previous.candidates.length !== next.candidates.length) return false
+
+  return previous.candidates.every((candidate, index) => candidate === next.candidates[index])
+}
+
+function areImageSectionPropsEqual(previous: ImageSectionProps, next: ImageSectionProps) {
+  return (
+    previous.panelId === next.panelId &&
+    previous.imageUrl === next.imageUrl &&
+    previous.globalPanelNumber === next.globalPanelNumber &&
+    previous.shotType === next.shotType &&
+    previous.videoRatio === next.videoRatio &&
+    previous.isDeleting === next.isDeleting &&
+    previous.isUploadingImage === next.isUploadingImage &&
+    previous.isModifying === next.isModifying &&
+    previous.isSubmittingPanelImageTask === next.isSubmittingPanelImageTask &&
+    previous.failedError === next.failedError &&
+    areCandidateDataEqual(previous.candidateData, next.candidateData) &&
+    previous.previousImageUrl === next.previousImageUrl
+  )
+}
+
+function ImageSection({
   panelId,
   imageUrl,
   globalPanelNumber,
   shotType,
   videoRatio,
   isDeleting,
+  isUploadingImage,
   isModifying,
   isSubmittingPanelImageTask,
   failedError,
   candidateData,
   previousImageUrl,
   onRegeneratePanelImage,
+  onUploadImage,
+  onOpenSourcePanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   onSelectCandidateIndex,
@@ -187,8 +220,11 @@ export default function ImageSection({
           imageUrl={imageUrl}
           previousImageUrl={previousImageUrl}
           isSubmittingPanelImageTask={isSubmittingPanelImageTask}
+          isUploading={isUploadingImage}
           isModifying={isModifying}
           onRegeneratePanelImage={onRegeneratePanelImage}
+          onUploadImage={onUploadImage}
+          onOpenSourcePanelPicker={onOpenSourcePanelPicker}
           onOpenEditModal={onOpenEditModal}
           onOpenAIDataModal={onOpenAIDataModal}
           onUndo={onUndo}
@@ -198,3 +234,5 @@ export default function ImageSection({
     </div>
   )
 }
+
+export default memo(ImageSection, areImageSectionPropsEqual)

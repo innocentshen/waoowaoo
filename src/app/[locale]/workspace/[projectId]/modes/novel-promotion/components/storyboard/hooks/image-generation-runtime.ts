@@ -14,6 +14,23 @@ export function getStoryboardPanels(storyboard: NovelPromotionStoryboard): Novel
   return Array.isArray(storyboard.panels) ? storyboard.panels : []
 }
 
+export function updatePanelByIdInStoryboards(
+  storyboards: NovelPromotionStoryboard[],
+  panelId: string,
+  updater: (panel: NovelPromotionPanel) => NovelPromotionPanel,
+): NovelPromotionStoryboard[] {
+  return storyboards.map((storyboard) => {
+    const panels = getStoryboardPanels(storyboard)
+    let changed = false
+    const updatedPanels = panels.map((panel) => {
+      if (panel.id !== panelId) return panel
+      changed = true
+      return updater(panel)
+    })
+    return changed ? { ...storyboard, panels: updatedPanels } : storyboard
+  })
+}
+
 export function updatePanelImageUrlInStoryboards(
   storyboards: NovelPromotionStoryboard[],
   storyboardId: string,

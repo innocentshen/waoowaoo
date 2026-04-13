@@ -1,5 +1,6 @@
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
 import { createScopedLogger } from '@/lib/logging/core'
+import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import { getSignedUrl } from '@/lib/storage'
 
 export type UnknownRecord = Record<string, unknown>
@@ -37,6 +38,7 @@ export interface PanelLike {
   imageUrl: string | null
   sketchImageUrl: string | null
   videoUrl: string | null
+  videoCandidates?: unknown
   lipSyncVideoUrl: string | null
   candidateImages: string | null
   panelImageHistory?: string | null
@@ -177,6 +179,14 @@ export function addSignedUrlsToStoryboard(storyboard: StoryboardLike) {
         videoUrl: dbPanel.videoUrl && !dbPanel.videoUrl.startsWith('http')
           ? getSignedUrl(dbPanel.videoUrl, 7200)
           : dbPanel.videoUrl,
+        videoCandidates: resolvePanelVideoCandidates({
+          videoCandidates: typeof dbPanel.videoCandidates === 'string' ? dbPanel.videoCandidates : null,
+          videoUrl: dbPanel.videoUrl,
+          videoGenerationMode: typeof dbPanel.videoGenerationMode === 'string' ? dbPanel.videoGenerationMode : null,
+        }).map((candidate) => ({
+          ...candidate,
+          videoUrl: keyToSignedUrl(candidate.videoUrl, 7200) || candidate.videoUrl,
+        })),
         lipSyncVideoUrl: dbPanel.lipSyncVideoUrl && !dbPanel.lipSyncVideoUrl.startsWith('http')
           ? getSignedUrl(dbPanel.lipSyncVideoUrl, 7200)
           : dbPanel.lipSyncVideoUrl,

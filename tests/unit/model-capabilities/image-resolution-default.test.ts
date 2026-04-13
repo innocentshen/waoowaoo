@@ -12,6 +12,7 @@ describe('model-capabilities/lookup - image resolution defaulting', () => {
 
   const capabilities: ModelCapabilities = {
     image: {
+      aspectRatioOptions: ['1:1', '16:9'],
       resolutionOptions: ['0.5K', '1K', '2K'],
     },
   }
@@ -29,6 +30,7 @@ describe('model-capabilities/lookup - image resolution defaulting', () => {
 
     expect(result.issues).toEqual([])
     expect(result.options).toEqual({
+      aspectRatio: '1:1',
       resolution: '0.5K',
     })
   })
@@ -36,6 +38,7 @@ describe('model-capabilities/lookup - image resolution defaulting', () => {
   it('does not override user-provided resolution', () => {
     const capabilityDefaults: CapabilitySelections = {
       [modelKey]: {
+        aspectRatio: '16:9',
         resolution: '2K',
       },
     }
@@ -50,6 +53,7 @@ describe('model-capabilities/lookup - image resolution defaulting', () => {
 
     expect(result.issues).toEqual([])
     expect(result.options).toEqual({
+      aspectRatio: '16:9',
       resolution: '2K',
     })
   })

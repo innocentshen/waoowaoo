@@ -13,7 +13,6 @@ import { useCallback } from 'react'
 import { isAbortError } from '@/lib/error-utils'
 import {
     useAssetActions,
-    useProjectAssets,
     useRefreshProjectAssets,
     useRegenerateSingleLocationImage,
     useRegenerateLocationGroup,
@@ -22,6 +21,7 @@ import {
     useConfirmProjectLocationSelection,
     useUpdateProjectLocationDescription,
 } from '@/lib/query/hooks'
+import { useAssetStageProjectAssets } from '../AssetStageProjectAssetsContext'
 
 interface UseLocationActionsProps {
     projectId: string
@@ -45,8 +45,8 @@ export function useLocationActions({
 }: UseLocationActionsProps) {
     const t = useTranslations('assets')
     // 🔥 直接订阅缓存 - 消除 props drilling
-    const { data: assets } = useProjectAssets(projectId)
-    const locations = assetType === 'prop' ? assets?.props ?? [] : assets?.locations ?? []
+    const assets = useAssetStageProjectAssets(projectId)
+    const locations = assetType === 'prop' ? assets.props : assets.locations
     const propActions = useAssetActions({ scope: 'project', projectId, kind: 'prop' })
     const assetKey = assetType === 'prop' ? 'prop' : 'location'
 
@@ -106,7 +106,7 @@ export function useLocationActions({
             }
             showToast?.(t('image.confirmFailed', { error: getErrorMessage(error, t('common.unknownError')) }), 'error')
         }
-    }, [assetType, confirmLocationSelectionMutation, showToast, t])
+    }, [confirmLocationSelectionMutation, showToast, t])
 
     // 单张重新生成场景图片 - 🔥 V6.7: 使用mutation hook
     const handleRegenerateSingleLocation = useCallback(async (locationId: string, imageIndex: number) => {

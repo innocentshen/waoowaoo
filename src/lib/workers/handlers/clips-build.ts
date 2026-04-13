@@ -11,6 +11,7 @@ import { createWorkerLLMStreamCallbacks, createWorkerLLMStreamContext } from './
 import type { TaskJobData } from '@/lib/task/types'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -46,10 +47,7 @@ export async function handleClipsBuildTask(job: Job<TaskJobData>) {
     throw new Error('episodeId is required')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { id: true },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

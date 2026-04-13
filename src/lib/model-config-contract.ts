@@ -30,11 +30,13 @@ export interface LLMCapabilities {
 }
 
 export interface ImageCapabilities {
+  aspectRatioOptions?: string[]
   resolutionOptions?: string[]
   fieldI18n?: CapabilityFieldI18nMap
 }
 
 export interface VideoCapabilities {
+  aspectRatioOptions?: string[]
   generationModeOptions?: string[]
   generateAudioOptions?: boolean[]
   durationOptions?: number[]
@@ -84,11 +86,13 @@ const LLM_ALLOWED_FIELDS = new Set<keyof LLMCapabilities>([
 ])
 
 const IMAGE_ALLOWED_FIELDS = new Set<keyof ImageCapabilities>([
+  'aspectRatioOptions',
   'resolutionOptions',
   'fieldI18n',
 ])
 
 const VIDEO_ALLOWED_FIELDS = new Set<keyof VideoCapabilities>([
+  'aspectRatioOptions',
   'generationModeOptions',
   'generateAudioOptions',
   'durationOptions',
@@ -279,6 +283,15 @@ function validateLLMCapabilities(issues: CapabilityValidationIssue[], raw: unkno
 function validateImageCapabilities(issues: CapabilityValidationIssue[], raw: unknown) {
   if (!isRecord(raw)) return
 
+  const aspectRatioOptions = raw.aspectRatioOptions
+  if (aspectRatioOptions !== undefined && !isStringArray(aspectRatioOptions)) {
+    issues.push({
+      code: 'CAPABILITY_FIELD_INVALID',
+      field: 'capabilities.image.aspectRatioOptions',
+      message: 'aspectRatioOptions must be a non-empty string array',
+    })
+  }
+
   const resolutionOptions = raw.resolutionOptions
   if (resolutionOptions !== undefined && !isStringArray(resolutionOptions)) {
     issues.push({
@@ -289,12 +302,22 @@ function validateImageCapabilities(issues: CapabilityValidationIssue[], raw: unk
   }
 
   validateFieldI18nMap(issues, 'image', raw.fieldI18n, {
+    aspectRatio: isStringArray(aspectRatioOptions) ? aspectRatioOptions : undefined,
     resolution: isStringArray(resolutionOptions) ? resolutionOptions : undefined,
   })
 }
 
 function validateVideoCapabilities(issues: CapabilityValidationIssue[], raw: unknown) {
   if (!isRecord(raw)) return
+
+  const aspectRatioOptions = raw.aspectRatioOptions
+  if (aspectRatioOptions !== undefined && !isStringArray(aspectRatioOptions)) {
+    issues.push({
+      code: 'CAPABILITY_FIELD_INVALID',
+      field: 'capabilities.video.aspectRatioOptions',
+      message: 'aspectRatioOptions must be a non-empty string array',
+    })
+  }
 
   const generationModeOptions = raw.generationModeOptions
   if (generationModeOptions !== undefined && !isStringArray(generationModeOptions)) {
@@ -358,6 +381,7 @@ function validateVideoCapabilities(issues: CapabilityValidationIssue[], raw: unk
   }
 
   validateFieldI18nMap(issues, 'video', raw.fieldI18n, {
+    aspectRatio: isStringArray(aspectRatioOptions) ? aspectRatioOptions : undefined,
     generationMode: isStringArray(generationModeOptions) ? generationModeOptions : undefined,
     generateAudio: isBooleanArray(generateAudioOptions) ? generateAudioOptions : undefined,
     duration: isNumberArray(durationOptions) ? durationOptions : undefined,

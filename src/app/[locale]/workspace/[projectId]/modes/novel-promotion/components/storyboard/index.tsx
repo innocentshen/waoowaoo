@@ -5,6 +5,7 @@ import { CharacterPickerModal, LocationPickerModal } from '../PanelEditForm'
 import ImageEditModal from './ImageEditModal'
 import AIDataModal from './AIDataModal'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
+import SelectStoryboardPanelImageModal from './SelectStoryboardPanelImageModal'
 import StoryboardStageShell from './StoryboardStageShell'
 import StoryboardToolbar from './StoryboardToolbar'
 import StoryboardCanvas from './StoryboardCanvas'
@@ -46,6 +47,7 @@ export default function StoryboardStage({
     sortedStoryboards,
     expandedClips,
     toggleExpandedClip,
+    panelEdits,
     getClipInfo,
     getTextPanels,
     getPanelEditData,
@@ -74,17 +76,21 @@ export default function StoryboardStage({
     submittingVariantPanelId,
     generatePanelVariant,
 
+    panelCandidateIndex,
     submittingStoryboardIds,
     submittingPanelImageIds,
     selectingCandidateIds,
 
     editingPanel,
     setEditingPanel,
+    uploadingPanels,
     modifyingPanels,
     isDownloadingImages,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
+    uploadPanelImage,
+    selectPanelSourceImage,
     regenerateAllPanelsIndividually,
     selectPanelCandidate,
     selectPanelCandidateIndex,
@@ -95,6 +101,8 @@ export default function StoryboardStage({
 
     assetPickerPanel,
     setAssetPickerPanel,
+    sourcePanelPickerPanelId,
+    setSourcePanelPickerPanelId,
     aiDataPanel,
     setAIDataPanel,
     isEpisodeBatchSubmitting,
@@ -168,6 +176,8 @@ export default function StoryboardStage({
           sortedStoryboards={sortedStoryboards}
           videoRatio={videoRatio}
           expandedClips={expandedClips}
+          panelEdits={panelEdits}
+          panelCandidateIndex={panelCandidateIndex}
           submittingStoryboardIds={submittingStoryboardIds}
           selectingCandidateIds={selectingCandidateIds}
           submittingStoryboardTextIds={submittingStoryboardTextIds}
@@ -175,6 +185,7 @@ export default function StoryboardStage({
           deletingPanelIds={deletingPanelIds}
           saveStateByPanel={saveStateByPanel}
           hasUnsavedByPanel={hasUnsavedByPanel}
+          uploadingPanels={uploadingPanels}
           modifyingPanels={modifyingPanels}
           submittingPanelImageIds={submittingPanelImageIds}
 
@@ -204,6 +215,8 @@ export default function StoryboardStage({
           onRemoveLocation={handleRemoveLocation}
           onRetryPanelSave={retrySave}
           onRegeneratePanelImage={regeneratePanelImage}
+          onUploadPanelImage={uploadPanelImage}
+          onOpenSourcePanelPicker={setSourcePanelPickerPanelId}
           onOpenEditModal={(storyboardId, panelIndex) => setEditingPanel({ storyboardId, panelIndex })}
           onOpenAIDataModal={(storyboardId, panelIndex) => setAIDataPanel({ storyboardId, panelIndex })}
           getPanelCandidates={getPanelCandidates}
@@ -248,6 +261,25 @@ export default function StoryboardStage({
 
         {modalRuntime.previewImage && (
           <ImagePreviewModal imageUrl={modalRuntime.previewImage} onClose={modalRuntime.closePreviewImage} />
+        )}
+
+        {sourcePanelPickerPanelId && (
+          <SelectStoryboardPanelImageModal
+            open={!!sourcePanelPickerPanelId}
+            targetPanelId={sourcePanelPickerPanelId}
+            storyboards={sortedStoryboards}
+            videoRatio={videoRatio}
+            getTextPanels={getTextPanels}
+            getClipTitle={(storyboard) => formatClipTitle(getClipInfo(storyboard.clipId))}
+            onClose={() => setSourcePanelPickerPanelId(null)}
+            onSelect={async (sourcePanelId) => {
+              if (!sourcePanelPickerPanelId) return
+              const success = await selectPanelSourceImage(sourcePanelPickerPanelId, sourcePanelId)
+              if (success) {
+                setSourcePanelPickerPanelId(null)
+              }
+            }}
+          />
         )}
 
         {modalRuntime.hasCharacterPicker && (

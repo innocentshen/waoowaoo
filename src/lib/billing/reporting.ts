@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import type { ApiType, UsageUnit } from './cost'
 import { BillingOperationError } from './errors'
 import { toMoneyNumber } from './money'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 interface RecordParams {
   projectId: string
@@ -87,10 +88,7 @@ export async function recordUsageCostOnly(
   const hasProject = isProjectScoped(params.projectId)
 
   if (hasProject) {
-    const project = await txOrPrisma.project.findUnique({
-      where: { id: params.projectId },
-      select: { id: true },
-    })
+    const project = await findProjectBaseById(params.projectId, txOrPrisma)
     if (!project) {
       throw new BillingOperationError('BILLING_INVALID_PROJECT', `project not found for billing: ${params.projectId}`, {
         projectId: params.projectId,

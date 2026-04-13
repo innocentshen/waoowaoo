@@ -34,13 +34,15 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { createArtifact, listArtifacts } from '@/lib/run-runtime/service'
 import { assertWorkflowRunActive, withWorkflowRunLease } from '@/lib/run-runtime/workflow-lease'
 import { parseScreenplayPayload } from './screenplay-convert-helpers'
+import { findProjectBaseById } from '@/lib/projects/project-read'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
 }
 
-function isReasoningEffort(value: unknown): value is 'minimal' | 'low' | 'medium' | 'high' {
-  return value === 'minimal' || value === 'low' || value === 'medium' || value === 'high'
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
 }
 
 function resolveRetryClipId(retryStepKey: string): string | null {
@@ -72,13 +74,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
     throw new Error('episodeId is required')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      name: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

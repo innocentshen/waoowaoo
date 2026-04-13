@@ -41,10 +41,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function normalizeCapabilitySelectionsInput(
-  raw: unknown,
-  options?: { allowLegacyAspectRatio?: boolean },
-): CapabilitySelections {
+function normalizeCapabilitySelectionsInput(raw: unknown): CapabilitySelections {
   if (raw === undefined || raw === null) return {}
   if (!isRecord(raw)) {
     throw new ApiError('INVALID_PARAMS', {
@@ -62,12 +59,6 @@ function normalizeCapabilitySelectionsInput(
 
     const selection: Record<string, string | number | boolean> = {}
     for (const [field, value] of Object.entries(rawSelection)) {
-      if (field === 'aspectRatio') {
-        if (options?.allowLegacyAspectRatio) continue
-        throw new ApiError('INVALID_PARAMS', {
-          code: 'CAPABILITY_FIELD_INVALID',
-          field: `capabilityOverrides.${modelKey}.${field}`})
-      }
       if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
         throw new ApiError('INVALID_PARAMS', {
           code: 'CAPABILITY_SELECTION_INVALID',
@@ -87,7 +78,7 @@ function normalizeCapabilitySelectionsInput(
 function parseStoredCapabilitySelections(raw: string | null | undefined): CapabilitySelections {
   if (!raw) return {}
   try {
-    return normalizeCapabilitySelectionsInput(JSON.parse(raw) as unknown, { allowLegacyAspectRatio: true })
+    return normalizeCapabilitySelectionsInput(JSON.parse(raw) as unknown)
   } catch {
     return {}
   }

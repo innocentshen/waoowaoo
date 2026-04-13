@@ -23,6 +23,7 @@ import type { NormalizedError } from '@/lib/errors/types'
 import { mapTaskSSEEventToRunEvents } from '@/lib/run-runtime/task-bridge'
 import { publishRunEvent } from '@/lib/run-runtime/publisher'
 import { RUN_EVENT_TYPE } from '@/lib/run-runtime/types'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -304,10 +305,7 @@ function buildErrorCauseChain(input: unknown): Array<{ name: string; message: st
 
 async function resolveProjectNameForLogging(projectId: string): Promise<void> {
   try {
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { name: true },
-    })
+    const project = await findProjectBaseById(projectId)
     if (project?.name) {
       onProjectNameAvailable(projectId, project.name)
     }

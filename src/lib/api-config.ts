@@ -58,9 +58,109 @@ interface CustomProvider {
 }
 
 type LlmProtocolType = 'responses' | 'chat-completions'
+const LEGACY_PROVIDER_ID_MIGRATIONS: Readonly<Record<string, string>> = {
+  qwen: 'bailian',
+}
+
+function migrateLegacyProviderId(providerId: string): string {
+  const trimmed = readTrimmedString(providerId)
+  if (!trimmed) return trimmed
+  const providerKey = getProviderKey(trimmed).toLowerCase()
+  const migratedKey = LEGACY_PROVIDER_ID_MIGRATIONS[providerKey]
+  if (!migratedKey) return trimmed
+  return trimmed === providerKey
+    ? migratedKey
+    : `${migratedKey}${trimmed.slice(providerKey.length)}`
+}
+
+function migrateLegacyParsedModelKey(parsed: {
+  provider: string
+  modelId: string
+  modelKey: string
+}): {
+  provider: string
+  modelId: string
+  modelKey: string
+} {
+  const provider = migrateLegacyProviderId(parsed.provider)
+  if (provider === parsed.provider) return parsed
+  return {
+    provider,
+    modelId: parsed.modelId,
+    modelKey: composeModelKey(provider, parsed.modelId),
+  }
+}
+
+function mergeCustomProviders(existing: CustomProvider, incoming: CustomProvider): CustomProvider {
+  return {
+    ...existing,
+    name: existing.name || incoming.name,
+    baseUrl: existing.baseUrl || incoming.baseUrl,
+    apiKey: existing.apiKey || incoming.apiKey,
+    apiMode: existing.apiMode ?? incoming.apiMode,
+    gatewayRoute: existing.gatewayRoute ?? incoming.gatewayRoute,
+  }
+}
+
+function dedupeCustomProviders(providers: CustomProvider[]): CustomProvider[] {
+  const orderedKeys: string[] = []
+  const byId = new Map<string, CustomProvider>()
+
+  for (const provider of providers) {
+    const normalizedId = provider.id.toLowerCase()
+    const existing = byId.get(normalizedId)
+    if (!existing) {
+      orderedKeys.push(normalizedId)
+      byId.set(normalizedId, provider)
+      continue
+    }
+    byId.set(normalizedId, mergeCustomProviders(existing, provider))
+  }
+
+  return orderedKeys
+    .map((key) => byId.get(key))
+    .filter((provider): provider is CustomProvider => !!provider)
+}
+
+function mergeCustomModels(existing: CustomModel, incoming: CustomModel): CustomModel {
+  return {
+    ...existing,
+    name: existing.name || incoming.name,
+    llmProtocol: existing.llmProtocol ?? incoming.llmProtocol,
+    llmProtocolCheckedAt: existing.llmProtocolCheckedAt ?? incoming.llmProtocolCheckedAt,
+    compatMediaTemplate: existing.compatMediaTemplate ?? incoming.compatMediaTemplate,
+    compatMediaTemplateCheckedAt: existing.compatMediaTemplateCheckedAt ?? incoming.compatMediaTemplateCheckedAt,
+    compatMediaTemplateSource: existing.compatMediaTemplateSource ?? incoming.compatMediaTemplateSource,
+    price: existing.price || incoming.price,
+  }
+}
+
+function dedupeCustomModels(models: CustomModel[]): CustomModel[] {
+  const orderedKeys: string[] = []
+  const byModelKey = new Map<string, CustomModel>()
+
+  for (const model of models) {
+    const existing = byModelKey.get(model.modelKey)
+    if (!existing) {
+      orderedKeys.push(model.modelKey)
+      byModelKey.set(model.modelKey, model)
+      continue
+    }
+    byModelKey.set(model.modelKey, mergeCustomModels(existing, model))
+  }
+
+  return orderedKeys
+    .map((key) => byModelKey.get(key))
+    .filter((model): model is CustomModel => !!model)
+}
 
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
   const providerKey = getProviderKey(providerId)
+  if (providerKey === 'grok') {
+    // The built-in Grok provider is reserved for the official xAI API.
+    // Grok-compatible proxies should be configured through openai-compatible.
+    return 'https://api.x.ai/v1'
+  }
   if (providerKey === 'minimax') {
     return 'https://api.minimaxi.com/v1'
   }
@@ -111,7 +211,8 @@ function isLlmProtocol(value: unknown): value is LlmProtocolType {
 }
 
 function assertModelKey(value: string, field: string): { provider: string; modelId: string; modelKey: string } {
-  const parsed = parseModelKeyStrict(value)
+  const parsedRaw = parseModelKeyStrict(value)
+  const parsed = parsedRaw ? migrateLegacyParsedModelKey(parsedRaw) : null
   if (!parsed) {
     throw new Error(`MODEL_KEY_INVALID: ${field} must be provider::modelId`)
   }
@@ -139,14 +240,10 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
       throw new Error(`PROVIDER_PAYLOAD_INVALID: providers[${index}] must be an object`)
     }
 
-    const id = readTrimmedString(raw.id)
+    const id = migrateLegacyProviderId(readTrimmedString(raw.id))
     const name = readTrimmedString(raw.name)
     if (!id || !name) {
       throw new Error(`PROVIDER_PAYLOAD_INVALID: providers[${index}] missing id or name`)
-    }
-    const normalizedId = id.toLowerCase()
-    if (providers.some((provider) => provider.id.toLowerCase() === normalizedId)) {
-      throw new Error(`PROVIDER_DUPLICATE: providers[${index}].id duplicates id ${id}`)
     }
 
     const providerKey = getProviderKey(id).toLowerCase()
@@ -187,7 +284,7 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
     })
   }
 
-  return providers
+  return dedupeCustomProviders(providers)
 }
 
 function normalizeStoredModel(raw: unknown, index: number): CustomModel {
@@ -199,11 +296,12 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     throw new Error(`MODEL_TYPE_INVALID: models[${index}].type is invalid`)
   }
 
-  const providerFromField = readTrimmedString(raw.provider)
+  const providerFromField = migrateLegacyProviderId(readTrimmedString(raw.provider))
   const modelIdFromField = readTrimmedString(raw.modelId)
   const modelKeyFromField = readTrimmedString(raw.modelKey)
 
-  const parsedFromKey = modelKeyFromField ? parseModelKeyStrict(modelKeyFromField) : null
+  const parsedFromKeyRaw = modelKeyFromField ? parseModelKeyStrict(modelKeyFromField) : null
+  const parsedFromKey = parsedFromKeyRaw ? migrateLegacyParsedModelKey(parsedFromKeyRaw) : null
   const provider = providerFromField || parsedFromKey?.provider || ''
   const modelId = modelIdFromField || parsedFromKey?.modelId || ''
   const modelKey = composeModelKey(provider, modelId)
@@ -212,7 +310,7 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     throw new Error(`MODEL_KEY_INVALID: models[${index}] must include provider and modelId`)
   }
 
-  if (parsedFromKey && parsedFromKey.modelKey !== modelKey) {
+  if (modelKeyFromField && (!parsedFromKey || parsedFromKey.modelKey !== modelKey)) {
     throw new Error(`MODEL_KEY_MISMATCH: models[${index}].modelKey conflicts with provider/modelId`)
   }
 
@@ -275,7 +373,7 @@ function parseCustomModels(rawModels: string | null | undefined): CustomModel[] 
     models.push(normalizeStoredModel(parsedUnknown[index], index))
   }
 
-  return models
+  return dedupeCustomModels(models)
 }
 
 function pickProviderStrict(

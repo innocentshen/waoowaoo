@@ -14,6 +14,7 @@ type ToastType = 'success' | 'warning' | 'error'
 type ShowToast = (message: string, type?: ToastType, duration?: number) => void
 type TranslateValues = Record<string, string | number | Date>
 type Translate = (key: string, values?: TranslateValues) => string
+type GlobalAnalyzeTaskStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
 
 interface UseAssetsGlobalActionsParams {
   projectId: string
@@ -27,6 +28,10 @@ interface UseAssetsGlobalActionsParams {
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 type GlobalAnalyzeTaskSnapshot = Pick<TaskTargetState, 'phase' | 'runningTaskId' | 'lastError'> | null
+type GlobalAnalyzeFinalizeTaskSnapshot = { status: GlobalAnalyzeTaskStatus } | null
+type GlobalAnalyzeRunningTaskSnapshot = {
+  status: 'queued' | 'processing'
+}
 
 function isRunningPhase(phase: TaskTargetState['phase'] | null | undefined): boolean {
   return phase === 'queued' || phase === 'processing'
@@ -34,6 +39,12 @@ function isRunningPhase(phase: TaskTargetState['phase'] | null | undefined): boo
 
 export function isGlobalAnalyzeTaskRunning(taskState: GlobalAnalyzeTaskSnapshot): boolean {
   return isRunningPhase(taskState?.phase)
+}
+
+export function shouldResumeGlobalAnalyzeFromTaskSnapshot(
+  task: GlobalAnalyzeFinalizeTaskSnapshot,
+): task is GlobalAnalyzeRunningTaskSnapshot {
+  return task?.status === 'queued' || task?.status === 'processing'
 }
 
 export function resolveGlobalAnalyzeCompletion(
@@ -85,6 +96,7 @@ export function useAssetsGlobalActions({
   const hasTriggeredGlobalAnalyze = useRef(false)
   const lastRunningTaskIdRef = useRef<string | null>(null)
   const lastHandledTaskIdRef = useRef<string | null>(null)
+  const finalizingTaskIdRef = useRef<string | null>(null)
   const isSubmittingRef = useRef(false)
   const globalAnalyzeTaskStateQuery = useTaskTargetStateMap(
     projectId,
@@ -98,6 +110,7 @@ export function useAssetsGlobalActions({
       staleTime: 2_000,
     },
   )
+  const refetchGlobalAnalyzeTaskState = globalAnalyzeTaskStateQuery.refetch
   const globalAnalyzeTaskState = globalAnalyzeTaskStateQuery.getState('NovelPromotionProject', projectId)
   const isGlobalAnalyzing = isGlobalAnalyzeTaskRunning(globalAnalyzeTaskState)
 
@@ -127,6 +140,7 @@ export function useAssetsGlobalActions({
 
       const submission = await analyzeGlobalAssets.mutateAsync()
       lastRunningTaskIdRef.current = submission.taskId
+      void refetchGlobalAnalyzeTaskState()
     } catch (error: unknown) {
       clearTaskTargetOverlay(queryClient, {
         projectId,
@@ -138,7 +152,7 @@ export function useAssetsGlobalActions({
     } finally {
       isSubmittingRef.current = false
     }
-  }, [analyzeGlobalAssets, isGlobalAnalyzing, projectId, queryClient, showToast, t])
+  }, [analyzeGlobalAssets, isGlobalAnalyzing, projectId, queryClient, refetchGlobalAnalyzeTaskState, showToast, t])
 
   useEffect(() => {
     if (isGlobalAnalyzing && globalAnalyzeTaskState?.runningTaskId) {
@@ -154,12 +168,22 @@ export function useAssetsGlobalActions({
     if (lastHandledTaskIdRef.current === completion.finishedTaskId) {
       return
     }
-
-    lastHandledTaskIdRef.current = completion.finishedTaskId
-    lastRunningTaskIdRef.current = null
+    if (finalizingTaskIdRef.current === completion.finishedTaskId) {
+      return
+    }
 
     void (async () => {
+      finalizingTaskIdRef.current = completion.finishedTaskId
+
       if (completion.status === 'failed') {
+        finalizingTaskIdRef.current = null
+        lastHandledTaskIdRef.current = completion.finishedTaskId
+        lastRunningTaskIdRef.current = null
+        clearTaskTargetOverlay(queryClient, {
+          projectId,
+          targetType: 'NovelPromotionProject',
+          targetId: projectId,
+        })
         showToast(
           `${t('toolbar.globalAnalyzeFailed')}: ${completion.errorMessage || t('toolbar.globalAnalyzeFailed')}`,
           'error',
@@ -168,11 +192,23 @@ export function useAssetsGlobalActions({
         return
       }
 
+      let latestTaskStatus: GlobalAnalyzeTaskStatus | null = null
       try {
         const result = await waitForTaskResult(completion.finishedTaskId, {
-          intervalMs: 100,
-          timeoutMs: 2_000,
+          intervalMs: 500,
+          timeoutMs: 30_000,
+          onTaskUpdate: (task) => {
+            latestTaskStatus = task.status
+          },
         }) as { stats?: { newCharacters?: number; newLocations?: number } }
+        finalizingTaskIdRef.current = null
+        lastHandledTaskIdRef.current = completion.finishedTaskId
+        lastRunningTaskIdRef.current = null
+        clearTaskTargetOverlay(queryClient, {
+          projectId,
+          targetType: 'NovelPromotionProject',
+          targetId: projectId,
+        })
         await Promise.resolve(onRefresh())
         showToast(
           t('toolbar.globalAnalyzeSuccess', {
@@ -183,11 +219,35 @@ export function useAssetsGlobalActions({
           5000,
         )
       } catch (error: unknown) {
+        finalizingTaskIdRef.current = null
+        if (latestTaskStatus === 'queued' || latestTaskStatus === 'processing') {
+          const latestPhase = latestTaskStatus === 'processing' ? 'processing' : 'queued'
+          lastRunningTaskIdRef.current = completion.finishedTaskId
+          upsertTaskTargetOverlay(queryClient, {
+            projectId,
+            targetType: 'NovelPromotionProject',
+            targetId: projectId,
+            phase: latestPhase,
+            runningTaskId: completion.finishedTaskId,
+            runningTaskType: 'analyze_global',
+            intent: 'analyze',
+          })
+          void refetchGlobalAnalyzeTaskState()
+          return
+        }
+
+        lastHandledTaskIdRef.current = completion.finishedTaskId
+        lastRunningTaskIdRef.current = null
+        clearTaskTargetOverlay(queryClient, {
+          projectId,
+          targetType: 'NovelPromotionProject',
+          targetId: projectId,
+        })
         _ulogError('Global analyze finalize error:', error)
         showToast(`${t('toolbar.globalAnalyzeFailed')}: ${getErrorMessage(error)}`, 'error', 5000)
       }
     })()
-  }, [globalAnalyzeTaskState, onRefresh, showToast, t])
+  }, [globalAnalyzeTaskState, onRefresh, projectId, queryClient, refetchGlobalAnalyzeTaskState, showToast, t])
 
   useEffect(() => {
     if (!triggerGlobalAnalyze || hasTriggeredGlobalAnalyze.current || isGlobalAnalyzing) {

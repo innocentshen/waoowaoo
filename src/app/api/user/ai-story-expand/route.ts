@@ -1,43 +1,56 @@
 import { createHash } from 'crypto'
 import { NextRequest } from 'next/server'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuthLight, requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getUserModelConfig } from '@/lib/config-service'
+import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import { maybeSubmitLLMTask } from '@/lib/llm-observe/route-task'
 import { TASK_TYPE } from '@/lib/task/types'
 
 export const POST = apiHandler(async (request: NextRequest) => {
-  const authResult = await requireUserAuth()
-  if (isErrorResponse(authResult)) return authResult
-  const { session } = authResult
-
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : ''
   if (!prompt) {
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const userConfig = await getUserModelConfig(session.user.id)
-  if (!userConfig.analysisModel) {
+  let userId = ''
+  let analysisModel: string | null = null
+
+  if (projectId) {
+    const authResult = await requireProjectAuthLight(projectId)
+    if (isErrorResponse(authResult)) return authResult
+    userId = authResult.session.user.id
+    const projectConfig = await getProjectModelConfig(projectId, userId)
+    analysisModel = projectConfig.analysisModel
+  } else {
+    const authResult = await requireUserAuth()
+    if (isErrorResponse(authResult)) return authResult
+    userId = authResult.session.user.id
+    const userConfig = await getUserModelConfig(userId)
+    analysisModel = userConfig.analysisModel
+  }
+
+  if (!analysisModel) {
     throw new ApiError('MISSING_CONFIG')
   }
 
   const dedupeDigest = createHash('sha1')
-    .update(`${session.user.id}:home-story-expand:${prompt}`)
+    .update(`${userId}:${projectId || 'home'}:home-story-expand:${prompt}`)
     .digest('hex')
     .slice(0, 16)
 
   const asyncTaskResponse = await maybeSubmitLLMTask({
     request,
-    userId: session.user.id,
-    projectId: 'home-ai-write',
+    userId,
+    projectId: projectId || 'home-ai-write',
     type: TASK_TYPE.AI_STORY_EXPAND,
     targetType: 'HomeAiStoryExpand',
-    targetId: session.user.id,
+    targetId: projectId || userId,
     routePath: '/api/user/ai-story-expand',
     body: {
       prompt,
-      analysisModel: userConfig.analysisModel,
+      analysisModel,
     },
     dedupeKey: `home_ai_story_expand:${dedupeDigest}`,
     priority: 1,

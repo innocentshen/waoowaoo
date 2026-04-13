@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { createScopedLogger } from '@/lib/logging/core'
 import { resolveModelSelection } from '../api-config'
 import { recordTextUsage as recordBillingTextUsage } from '@/lib/billing/runtime-usage'
+import type { ReasoningEffort } from './types'
 
 export const llmLogger = createScopedLogger({
   module: 'llm.client',
@@ -44,7 +45,7 @@ export function logLlmRawInput(params: {
   modelKey: string
   stream: boolean
   reasoning: boolean
-  reasoningEffort: 'minimal' | 'low' | 'medium' | 'high'
+  reasoningEffort: ReasoningEffort
   temperature: number
   action?: string
   messages: LlmRawMessage[]

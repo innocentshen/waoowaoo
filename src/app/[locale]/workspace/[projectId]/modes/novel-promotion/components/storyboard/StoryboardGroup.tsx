@@ -1,7 +1,7 @@
 'use client'
 import { useTranslations } from 'next-intl'
 
-import { useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import ScreenplayDisplay from './ScreenplayDisplay'
 import { StoryboardPanel } from './hooks/useStoryboardState'
 import StoryboardGroupHeader from './StoryboardGroupHeader'
@@ -16,7 +16,50 @@ import StoryboardGroupDialogs from './StoryboardGroupDialogs'
 import type { StoryboardGroupProps } from './StoryboardGroup.types'
 import { AppIcon } from '@/components/ui/icons'
 
-export default function StoryboardGroup({
+function areStoryboardGroupPropsEqual(previous: StoryboardGroupProps, next: StoryboardGroupProps) {
+  if (
+    previous.storyboard !== next.storyboard ||
+    previous.clip !== next.clip ||
+    previous.sbIndex !== next.sbIndex ||
+    previous.totalStoryboards !== next.totalStoryboards ||
+    previous.textPanels !== next.textPanels ||
+    previous.storyboardStartIndex !== next.storyboardStartIndex ||
+    previous.videoRatio !== next.videoRatio ||
+    previous.isExpanded !== next.isExpanded ||
+    previous.isSubmittingStoryboardTask !== next.isSubmittingStoryboardTask ||
+    previous.isSelectingCandidate !== next.isSelectingCandidate ||
+    previous.isSubmittingStoryboardTextTask !== next.isSubmittingStoryboardTextTask ||
+    previous.hasAnyImage !== next.hasAnyImage ||
+    previous.failedError !== next.failedError ||
+    previous.savingPanels !== next.savingPanels ||
+    previous.deletingPanelIds !== next.deletingPanelIds ||
+    previous.saveStateByPanel !== next.saveStateByPanel ||
+    previous.hasUnsavedByPanel !== next.hasUnsavedByPanel ||
+    previous.uploadingPanels !== next.uploadingPanels ||
+    previous.modifyingPanels !== next.modifyingPanels ||
+    previous.submittingPanelImageIds !== next.submittingPanelImageIds ||
+    previous.movingClipId !== next.movingClipId ||
+    previous.insertingAfterPanelId !== next.insertingAfterPanelId ||
+    previous.projectId !== next.projectId ||
+    previous.episodeId !== next.episodeId ||
+    previous.submittingVariantPanelId !== next.submittingVariantPanelId
+  ) {
+    return false
+  }
+
+  for (const panel of next.textPanels) {
+    if (previous.panelEdits[panel.id] !== next.panelEdits[panel.id]) {
+      return false
+    }
+    if (previous.panelCandidateIndex.get(panel.id) !== next.panelCandidateIndex.get(panel.id)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function StoryboardGroup({
   storyboard,
   clip,
   sbIndex,
@@ -25,6 +68,8 @@ export default function StoryboardGroup({
   storyboardStartIndex,
   videoRatio,
   isExpanded,
+  panelEdits,
+  panelCandidateIndex,
   isSubmittingStoryboardTask,
   isSelectingCandidate,
   isSubmittingStoryboardTextTask,
@@ -34,6 +79,7 @@ export default function StoryboardGroup({
   deletingPanelIds,
   saveStateByPanel,
   hasUnsavedByPanel,
+  uploadingPanels,
   modifyingPanels,
   submittingPanelImageIds,
   onToggleExpand,
@@ -54,6 +100,8 @@ export default function StoryboardGroup({
   onRemoveLocation,
   onRetryPanelSave,
   onRegeneratePanelImage,
+  onUploadPanelImage,
+  onOpenSourcePanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   getPanelCandidates,
@@ -136,7 +184,10 @@ export default function StoryboardGroup({
   )
 
   return (
-    <div className={`glass-surface-elevated p-6 relative ${failedError ? 'border-2 border-[var(--glass-stroke-danger)] bg-[var(--glass-danger-ring)]' : ''}`}>
+    <div
+      className={`glass-surface-elevated p-6 relative ${failedError ? 'border-2 border-[var(--glass-stroke-danger)] bg-[var(--glass-danger-ring)]' : ''}`}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '1280px' }}
+    >
       {failedError && (
         <StoryboardGroupFailedAlert
           failedError={failedError}
@@ -205,11 +256,14 @@ export default function StoryboardGroup({
         textPanels={textPanels}
         storyboardStartIndex={storyboardStartIndex}
         videoRatio={videoRatio}
+        panelEdits={panelEdits}
+        panelCandidateIndex={panelCandidateIndex}
         isSubmittingStoryboardTextTask={isSubmittingStoryboardTextTask}
         savingPanels={savingPanels}
         deletingPanelIds={deletingPanelIds}
         saveStateByPanel={saveStateByPanel}
         hasUnsavedByPanel={hasUnsavedByPanel}
+        uploadingPanels={uploadingPanels}
         modifyingPanels={modifyingPanels}
         panelTaskErrorMap={panelTaskErrorMap}
         isPanelTaskRunning={isPanelTaskRunning}
@@ -223,6 +277,8 @@ export default function StoryboardGroup({
         onRemoveLocation={onRemoveLocation}
         onRetryPanelSave={onRetryPanelSave}
         onRegeneratePanelImage={handleRegeneratePanelImage}
+        onUploadPanelImage={onUploadPanelImage}
+        onOpenSourcePanelPicker={onOpenSourcePanelPicker}
         onOpenEditModal={onOpenEditModal}
         onOpenAIDataModal={onOpenAIDataModal}
         onSelectPanelCandidateIndex={onSelectPanelCandidateIndex}
@@ -255,3 +311,5 @@ export default function StoryboardGroup({
     </div>
   )
 }
+
+export default memo(StoryboardGroup, areStoryboardGroupPropsEqual)

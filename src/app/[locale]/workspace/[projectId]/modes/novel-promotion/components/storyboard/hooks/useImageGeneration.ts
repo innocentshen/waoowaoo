@@ -1,7 +1,7 @@
 'use client'
 
 import { logError as _ulogError } from '@/lib/logging/core'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { NovelPromotionStoryboard } from '@/types/project'
 import { usePanelCandidates } from './usePanelCandidates'
 import {
@@ -10,6 +10,8 @@ import {
   useRefreshEpisodeData,
   useRefreshStoryboards,
   useRegenerateProjectPanelImage,
+  useSelectProjectStoryboardSourceImage,
+  useUploadProjectStoryboardPanelImage,
   useModifyProjectStoryboardImage,
   useDownloadProjectImages,
 } from '@/lib/query/hooks'
@@ -19,6 +21,8 @@ import {
   reconcileSubmittingPanelImageIds,
 } from './image-generation-runtime'
 import { usePanelImageRegeneration } from './usePanelImageRegeneration'
+import { usePanelImageUpload } from './usePanelImageUpload'
+import { usePanelImageSourceSelection } from './usePanelImageSourceSelection'
 import { usePanelImageModification } from './usePanelImageModification'
 import { usePanelImageDownload } from './usePanelImageDownload'
 
@@ -48,19 +52,25 @@ export function useStoryboardImageGeneration({
   const refreshEpisode = useRefreshEpisodeData(projectId, episodeId ?? null)
   const refreshStoryboards = useRefreshStoryboards(episodeId ?? null)
   const regeneratePanelMutation = useRegenerateProjectPanelImage(projectId)
+  const selectPanelSourceMutation = useSelectProjectStoryboardSourceImage(projectId)
+  const uploadPanelMutation = useUploadProjectStoryboardPanelImage(projectId)
   const modifyPanelMutation = useModifyProjectStoryboardImage(projectId)
   const downloadImagesMutation = useDownloadProjectImages(projectId)
   const clearStoryboardErrorMutation = useClearProjectStoryboardError(projectId)
 
-  const submittingStoryboardIds = new Set<string>(
-    localStoryboards
-      .filter((storyboard) => storyboard.storyboardTaskRunning)
-      .map((storyboard) => storyboard.id),
+  const submittingStoryboardIds = useMemo(
+    () => new Set<string>(
+      localStoryboards
+        .filter((storyboard) => storyboard.storyboardTaskRunning)
+        .map((storyboard) => storyboard.id),
+    ),
+    [localStoryboards],
   )
 
   const [submittingPanelImageIds, setSubmittingPanelImageIds] = useState<Set<string>>(new Set())
   const [selectingCandidateIds] = useState<Set<string>>(new Set())
   const [editingPanel, setEditingPanel] = useState<{ storyboardId: string; panelIndex: number } | null>(null)
+  const [uploadingPanels, setUploadingPanels] = useState<Set<string>>(new Set())
   const [modifyingPanels, setModifyingPanels] = useState<Set<string>>(new Set())
   const [isDownloadingImages, setIsDownloadingImages] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -139,6 +149,26 @@ export function useStoryboardImageGeneration({
     refreshStoryboards,
   })
 
+  const { uploadPanelImage } = usePanelImageUpload({
+    localStoryboards,
+    setLocalStoryboards,
+    uploadPanelMutation,
+    setUploadingPanels,
+    onSilentRefresh,
+    refreshEpisode,
+    refreshStoryboards,
+  })
+
+  const { selectPanelSourceImage } = usePanelImageSourceSelection({
+    localStoryboards,
+    setLocalStoryboards,
+    selectPanelSourceMutation,
+    setUploadingPanels,
+    onSilentRefresh,
+    refreshEpisode,
+    refreshStoryboards,
+  })
+
   const { downloadAllImages } = usePanelImageDownload({
     localStoryboards,
     downloadImagesMutation,
@@ -185,11 +215,14 @@ export function useStoryboardImageGeneration({
     setPanelCandidateIndex,
     editingPanel,
     setEditingPanel,
+    uploadingPanels,
     modifyingPanels,
     isDownloadingImages,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
+    uploadPanelImage,
+    selectPanelSourceImage,
     regenerateAllPanelsIndividually,
     selectPanelCandidate: confirmPanelCandidate,
     selectPanelCandidateIndex,

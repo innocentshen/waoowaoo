@@ -193,7 +193,28 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
         const { apiKey } = await getProviderConfig(userId, 'google')
         const {
             aspectRatio,
-        } = options
+            resolution,
+        } = options as {
+            aspectRatio?: string
+            resolution?: string
+            provider?: string
+            modelId?: string
+            modelKey?: string
+        }
+
+        const allowedOptionKeys = new Set([
+            'provider',
+            'modelId',
+            'modelKey',
+            'aspectRatio',
+            'resolution',
+        ])
+        for (const [key, value] of Object.entries(options)) {
+            if (value === undefined) continue
+            if (!allowedOptionKeys.has(key)) {
+                throw new Error(`GOOGLE_IMAGE_OPTION_UNSUPPORTED: ${key}`)
+            }
+        }
 
         await setProxy()
         const ai = new GoogleGenAI({ apiKey })
@@ -206,6 +227,7 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
                 config: {
                     numberOfImages: 1,
                     ...(aspectRatio ? { aspectRatio } : {}),
+                    ...(resolution ? { imageSize: resolution } : {}),
                 }
             })
 

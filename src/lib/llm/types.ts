@@ -1,10 +1,12 @@
 import type { LLMStreamKind } from '@/lib/llm-observe/types'
 import type { InternalLLMStreamStepMeta } from '@/lib/llm-observe/internal-stream-context'
 
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface ChatCompletionOptions {
     temperature?: number
     reasoning?: boolean
-    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+    reasoningEffort?: ReasoningEffort
     maxRetries?: number
     // 💰 计费相关
     projectId?: string   // 用于计费（如果不传，使用 'system' 作为默认值）

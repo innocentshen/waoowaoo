@@ -1,9 +1,39 @@
 import { getProviderConfig } from '@/lib/api-config'
-import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
 
 export const GROK_API_BASE_URL = 'https://api.x.ai/v1'
 export const GROK_DEFAULT_IMAGE_MODEL_ID = 'grok-imagine-image'
 export const GROK_DEFAULT_VIDEO_MODEL_ID = 'grok-imagine-video'
+export const GROK_SUPPORTED_IMAGE_RESOLUTIONS = ['1k', '2k'] as const
+export const GROK_SUPPORTED_IMAGE_ASPECT_RATIOS = [
+  'auto',
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '2:1',
+  '1:2',
+  '19.5:9',
+  '9:19.5',
+  '20:9',
+  '9:20',
+] as const
+export const GROK_SUPPORTED_VIDEO_ASPECT_RATIOS = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+] as const
+export const GROK_SUPPORTED_VIDEO_RESOLUTIONS = ['480p', '720p'] as const
+export const GROK_VIDEO_DURATION_MIN_SECONDS = 1
+export const GROK_VIDEO_DURATION_MAX_SECONDS = 15
+export const GROK_VIDEO_EDIT_MAX_SOURCE_DURATION_SECONDS = 8.7
 
 export function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -29,6 +59,71 @@ export async function normalizeGrokImageInput(input: string): Promise<string> {
   }
   if (trimmed.startsWith('data:')) return trimmed
   return await normalizeToBase64ForGeneration(trimmed)
+}
+
+export async function normalizeGrokEditImageInput(input: string): Promise<string> {
+  const trimmed = readTrimmedString(input)
+  if (!trimmed) {
+    throw new Error('GROK_IMAGE_INPUT_REQUIRED')
+  }
+  if (trimmed.startsWith('data:')) return trimmed
+  return await normalizeToOriginalMediaUrl(trimmed)
+}
+
+export function normalizeGrokImageResolution(
+  value: unknown,
+): typeof GROK_SUPPORTED_IMAGE_RESOLUTIONS[number] | undefined {
+  const normalized = readTrimmedString(value).toLowerCase()
+  if (!normalized) return undefined
+  if ((GROK_SUPPORTED_IMAGE_RESOLUTIONS as readonly string[]).includes(normalized)) {
+    return normalized as typeof GROK_SUPPORTED_IMAGE_RESOLUTIONS[number]
+  }
+  throw new Error(`GROK_IMAGE_RESOLUTION_UNSUPPORTED: ${normalized}`)
+}
+
+export function normalizeGrokImageAspectRatio(
+  value: unknown,
+): typeof GROK_SUPPORTED_IMAGE_ASPECT_RATIOS[number] | undefined {
+  const normalized = readTrimmedString(value)
+  if (!normalized) return undefined
+  if ((GROK_SUPPORTED_IMAGE_ASPECT_RATIOS as readonly string[]).includes(normalized)) {
+    return normalized as typeof GROK_SUPPORTED_IMAGE_ASPECT_RATIOS[number]
+  }
+  throw new Error(`GROK_IMAGE_ASPECT_RATIO_UNSUPPORTED: ${normalized}`)
+}
+
+export function normalizeGrokVideoAspectRatio(
+  value: unknown,
+): typeof GROK_SUPPORTED_VIDEO_ASPECT_RATIOS[number] | undefined {
+  const normalized = readTrimmedString(value)
+  if (!normalized) return undefined
+  if ((GROK_SUPPORTED_VIDEO_ASPECT_RATIOS as readonly string[]).includes(normalized)) {
+    return normalized as typeof GROK_SUPPORTED_VIDEO_ASPECT_RATIOS[number]
+  }
+  throw new Error(`GROK_VIDEO_ASPECT_RATIO_UNSUPPORTED: ${normalized}`)
+}
+
+export function normalizeGrokVideoResolution(
+  value: unknown,
+): typeof GROK_SUPPORTED_VIDEO_RESOLUTIONS[number] | undefined {
+  const normalized = readTrimmedString(value).toLowerCase()
+  if (!normalized) return undefined
+  if ((GROK_SUPPORTED_VIDEO_RESOLUTIONS as readonly string[]).includes(normalized)) {
+    return normalized as typeof GROK_SUPPORTED_VIDEO_RESOLUTIONS[number]
+  }
+  throw new Error(`GROK_VIDEO_RESOLUTION_UNSUPPORTED: ${normalized}`)
+}
+
+export function normalizeGrokVideoDuration(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`GROK_VIDEO_DURATION_INVALID: ${String(value)}`)
+  }
+  const normalized = Math.round(value)
+  if (normalized < GROK_VIDEO_DURATION_MIN_SECONDS || normalized > GROK_VIDEO_DURATION_MAX_SECONDS) {
+    throw new Error(`GROK_VIDEO_DURATION_UNSUPPORTED: ${normalized}`)
+  }
+  return normalized
 }
 
 export function normalizeGrokResponseFormat(value: unknown): 'url' | 'b64_json' {
@@ -93,4 +188,3 @@ export function guessImageMimeTypeFromBase64(base64: string): string {
     return 'image/jpeg'
   }
 }
-

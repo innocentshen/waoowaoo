@@ -6,10 +6,16 @@ import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { logProjectAction } from '@/lib/logging/semantic'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import {
   collectProjectBailianManagedVoiceIds,
   cleanupUnreferencedBailianVoices,
 } from '@/lib/providers/bailian'
+import {
+  PROJECT_BASE_SELECT,
+  findProjectBaseById,
+  findProjectWithUserById,
+} from '@/lib/projects/project-read'
 
 // GET - 获取项目详情
 export const GET = apiHandler(async (
@@ -23,12 +29,7 @@ export const GET = apiHandler(async (
   const { session } = authResult
 
   // 只获取基础项目信息，不包含模式特定数据
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
-      user: true
-    }
-  })
+  const project = await findProjectWithUserById(projectId)
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
@@ -39,7 +40,7 @@ export const GET = apiHandler(async (
   }
 
   // 更新最近访问时间（异步，不阻塞响应）
-  prisma.project.update({
+  prisma.project.updateMany({
     where: { id: projectId },
     data: { lastAccessedAt: new Date() }
   }).catch(err => _ulogError('更新访问时间失败:', err))
@@ -63,10 +64,7 @@ export const PATCH = apiHandler(async (
   const session = authResult.session
   const body = await request.json()
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: { user: true }
-  })
+  const project = await findProjectBaseById(projectId)
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
@@ -79,7 +77,8 @@ export const PATCH = apiHandler(async (
   // 更新项目
   const updatedProject = await prisma.project.update({
     where: { id: projectId },
-    data: body
+    data: body,
+    select: PROJECT_BASE_SELECT,
   })
 
   logProjectAction(
@@ -177,6 +176,19 @@ async function collectProjectCOSKeys(projectId: string): Promise<string[]> {
 
         const videoKey = await resolveStorageKeyFromMediaValue(panel.videoUrl)
         if (videoKey) keys.push(videoKey)
+
+        const candidateVideos = resolvePanelVideoCandidates({
+          videoCandidates: panel.videoCandidates,
+          videoUrl: panel.videoUrl,
+          videoGenerationMode: panel.videoGenerationMode,
+        })
+        for (const candidate of candidateVideos) {
+          const candidateKey = await resolveStorageKeyFromMediaValue(candidate.videoUrl)
+          if (candidateKey) keys.push(candidateKey)
+        }
+
+        const lipSyncVideoKey = await resolveStorageKeyFromMediaValue(panel.lipSyncVideoUrl)
+        if (lipSyncVideoKey) keys.push(lipSyncVideoKey)
       }
     }
   }
@@ -196,10 +208,7 @@ export const DELETE = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
   const session = authResult.session
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: { user: true }
-  })
+  const project = await findProjectBaseById(projectId)
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
@@ -229,7 +238,7 @@ export const DELETE = apiHandler(async (
   }
 
   // 3. 删除数据库记录 (级联删除所有关联数据)
-  await prisma.project.delete({
+  await prisma.project.deleteMany({
     where: { id: projectId }
   })
 

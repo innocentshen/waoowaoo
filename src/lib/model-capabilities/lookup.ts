@@ -1,4 +1,5 @@
 import {
+  composeModelKey,
   parseModelKeyStrict,
   type CapabilitySelections,
   type CapabilityValue,
@@ -7,6 +8,7 @@ import {
   type UnifiedModelType,
 } from '@/lib/model-config-contract'
 import { findBuiltinCapabilities, findBuiltinCapabilityCatalogEntry } from '@/lib/model-capabilities/catalog'
+import { resolvePreferredCapabilityDefault } from '@/lib/model-capabilities/defaults'
 
 export type CapabilitySelectionValidationCode =
   | 'CAPABILITY_SELECTION_INVALID'
@@ -33,6 +35,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCapabilityValue(value: unknown): value is CapabilityValue {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+function getModelKeyLookupCandidates(modelKey: string): string[] {
+  const parsed = parseModelKeyStrict(modelKey)
+  if (!parsed) return [modelKey]
+
+  const candidates = [parsed.modelKey]
+  const providerKey = parsed.provider.includes(':')
+    ? parsed.provider.slice(0, parsed.provider.indexOf(':'))
+    : parsed.provider
+
+  if ((providerKey === 'google' || providerKey === 'gemini-compatible') && parsed.modelId.endsWith('-gcp')) {
+    const canonicalModelKey = composeModelKey(
+      parsed.provider,
+      parsed.modelId.slice(0, -'-gcp'.length),
+    )
+    if (canonicalModelKey) {
+      candidates.push(canonicalModelKey)
+    }
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)))
 }
 
 function getNamespaceCapabilities(
@@ -234,12 +258,18 @@ function pickSelectionForModel(
   modelKey: string,
 ): Record<string, CapabilityValue> | undefined {
   if (!selections) return undefined
-  const selected = selections[modelKey]
+
+  let selected: unknown
+  for (const candidateModelKey of getModelKeyLookupCandidates(modelKey)) {
+    const candidate = selections[candidateModelKey]
+    if (!candidate || !isRecord(candidate)) continue
+    selected = candidate
+    break
+  }
   if (!selected || !isRecord(selected)) return undefined
 
   const normalized: Record<string, CapabilityValue> = {}
   for (const [field, rawValue] of Object.entries(selected)) {
-    if (field === 'aspectRatio') continue
     if (!isCapabilityValue(rawValue)) continue
     normalized[field] = rawValue
   }
@@ -284,9 +314,14 @@ export function resolveGenerationOptionsForModel(input: {
     const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
     const hasResolutionOptions = Array.isArray(optionFields.resolution) && optionFields.resolution.length > 0
     const hasResolutionInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'resolution')
+    const hasAspectRatioOptions = Array.isArray(optionFields.aspectRatio) && optionFields.aspectRatio.length > 0
+    const hasAspectRatioInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'aspectRatio')
 
     if (hasResolutionOptions && !hasResolutionInSelection) {
-      const firstResolution = optionFields.resolution[0]
+      const defaultResolution = resolvePreferredCapabilityDefault(
+        'resolution',
+        optionFields.resolution as CapabilityValue[],
+      )
 
       // 只有在 capabilities 确实声明了 resolutionOptions，且 validate 阶段报告了
       // 「resolution 必填但缺失」的情况下，才进行自动补全，避免掩盖其他问题。
@@ -296,10 +331,85 @@ export function resolveGenerationOptionsForModel(input: {
           && issue.field === `capabilities.${input.modelKey}.resolution`,
       )
 
-      if (missingResolutionIssue && optionFields.resolution.includes(firstResolution)) {
+      if (
+        missingResolutionIssue
+        && defaultResolution !== undefined
+        && optionFields.resolution.includes(defaultResolution)
+      ) {
         normalizedSelection = {
           ...normalizedSelection,
-          resolution: firstResolution,
+          resolution: defaultResolution,
+        }
+      }
+    }
+
+    if (hasAspectRatioOptions && !hasAspectRatioInSelection) {
+      const defaultAspectRatio = resolvePreferredCapabilityDefault(
+        'aspectRatio',
+        optionFields.aspectRatio as CapabilityValue[],
+      )
+      const missingAspectRatioIssue = precheckIssues.find(
+        (issue) =>
+          issue.code === 'CAPABILITY_REQUIRED'
+          && issue.field === `capabilities.${input.modelKey}.aspectRatio`,
+      )
+
+      if (
+        missingAspectRatioIssue
+        && defaultAspectRatio !== undefined
+        && optionFields.aspectRatio.includes(defaultAspectRatio)
+      ) {
+        normalizedSelection = {
+          ...normalizedSelection,
+          aspectRatio: defaultAspectRatio,
+        }
+      }
+    }
+  }
+
+  if (input.modelType === 'llm') {
+    const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
+    const hasReasoningEffortOptions = Array.isArray(optionFields.reasoningEffort) && optionFields.reasoningEffort.length > 0
+    const hasReasoningEffortInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'reasoningEffort')
+
+    if (hasReasoningEffortOptions && !hasReasoningEffortInSelection) {
+      const defaultReasoningEffort = resolvePreferredCapabilityDefault(
+        'reasoningEffort',
+        optionFields.reasoningEffort as CapabilityValue[],
+      )
+      if (defaultReasoningEffort !== undefined) {
+        normalizedSelection = {
+          ...normalizedSelection,
+          reasoningEffort: defaultReasoningEffort,
+        }
+      }
+    }
+  }
+
+  if (input.modelType === 'video') {
+    const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
+    const hasAspectRatioOptions = Array.isArray(optionFields.aspectRatio) && optionFields.aspectRatio.length > 0
+    const hasAspectRatioInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'aspectRatio')
+
+    if (hasAspectRatioOptions && !hasAspectRatioInSelection) {
+      const defaultAspectRatio = resolvePreferredCapabilityDefault(
+        'aspectRatio',
+        optionFields.aspectRatio as CapabilityValue[],
+      )
+      const missingAspectRatioIssue = precheckIssues.find(
+        (issue) =>
+          issue.code === 'CAPABILITY_REQUIRED'
+          && issue.field === `capabilities.${input.modelKey}.aspectRatio`,
+      )
+
+      if (
+        missingAspectRatioIssue
+        && defaultAspectRatio !== undefined
+        && optionFields.aspectRatio.includes(defaultAspectRatio)
+      ) {
+        normalizedSelection = {
+          ...normalizedSelection,
+          aspectRatio: defaultAspectRatio,
         }
       }
     }

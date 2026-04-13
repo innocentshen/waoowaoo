@@ -32,5 +32,16 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "boolOn": "On",
-    "boolOff": "Off"
+    "boolOff": "Off",
+    "capabilityOption": {
+        "none": "None",
+        "1K": "1K",
+        "2K": "2K",
+        "4K": "4K",
+        "minimal": "Minimal",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra high"
+    }
 }

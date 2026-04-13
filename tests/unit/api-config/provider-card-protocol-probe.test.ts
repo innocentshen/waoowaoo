@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CustomModel } from '@/app/[locale]/profile/components/api-config/types'
 import {
+  buildAddModelLlmProtocolFallback,
   probeModelLlmProtocolViaApi,
   shouldProbeModelLlmProtocol,
   shouldReprobeModelLlmProtocol,
@@ -79,5 +80,31 @@ describe('api-config provider-card protocol probe helpers', () => {
       providerId: 'openai-compatible:oa-1',
       modelId: 'gpt-4.1-mini',
     })).rejects.toThrow('PROBE_INCONCLUSIVE')
+  })
+
+  it('uses chat-completions fallback when probe is disabled for new openai-compatible llm models', () => {
+    expect(buildAddModelLlmProtocolFallback({
+      providerId: 'openai-compatible:oa-1',
+      modelType: 'llm',
+      probeBeforeAdd: false,
+      checkedAt: '2026-04-08T09:30:00.000Z',
+    })).toEqual({
+      llmProtocol: 'chat-completions',
+      llmProtocolCheckedAt: '2026-04-08T09:30:00.000Z',
+    })
+  })
+
+  it('does not add fallback protocol fields when probing remains enabled or model is not target', () => {
+    expect(buildAddModelLlmProtocolFallback({
+      providerId: 'openai-compatible:oa-1',
+      modelType: 'llm',
+      probeBeforeAdd: true,
+    })).toBeNull()
+
+    expect(buildAddModelLlmProtocolFallback({
+      providerId: 'openai-compatible:oa-1',
+      modelType: 'image',
+      probeBeforeAdd: false,
+    })).toBeNull()
   })
 })

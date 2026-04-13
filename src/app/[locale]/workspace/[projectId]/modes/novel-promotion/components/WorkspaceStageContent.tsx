@@ -14,7 +14,7 @@ export default function WorkspaceStageContent({
   currentStage,
 }: WorkspaceStageContentProps) {
   return (
-    <div key={currentStage} className="animate-page-enter">
+    <div className="animate-page-enter">
       {currentStage === 'config' && <ConfigStage />}
 
       {(currentStage === 'script' || currentStage === 'assets') && <ScriptStage />}

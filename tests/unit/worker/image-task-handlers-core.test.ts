@@ -5,7 +5,7 @@ import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => {}),
-  getProjectModels: vi.fn(async () => ({ editModel: 'edit-model' })),
+  getProjectModels: vi.fn(async () => ({ editModel: 'fal::edit-model' })),
   getUserModels: vi.fn(async () => ({ editModel: 'edit-model', analysisModel: 'analysis-model' })),
   resolveImageSourceFromGeneration: vi.fn(async () => 'generated-image-source'),
   stripLabelBar: vi.fn(async () => 'required-reference-image'),
@@ -16,6 +16,7 @@ const utilsMock = vi.hoisted(() => ({
 
 const outboundImageMock = vi.hoisted(() => ({
   normalizeReferenceImagesForGeneration: vi.fn(async () => ['normalized-reference-image']),
+  normalizeReferenceImagesForOriginalMedia: vi.fn(async () => ['normalized-original-reference-image']),
   normalizeToBase64ForGeneration: vi.fn(async () => 'base64-required-reference'),
 }))
 
@@ -85,6 +86,7 @@ function readUpdateData(arg: unknown): Record<string, unknown> {
 describe('worker image-task-handlers-core', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    utilsMock.getProjectModels.mockResolvedValue({ editModel: 'fal::edit-model' })
   })
 
   it('fails fast when modify task payload is incomplete', async () => {
@@ -206,5 +208,42 @@ describe('worker image-task-handlers-core', () => {
     expect(updateData.previousImageUrl).toBe('cos/panel-old.png')
     expect(updateData.imageUrl).toBe('cos/new-image.png')
     expect(updateData.candidateImages).toBeNull()
+  })
+
+  it('keeps grok storyboard multi-image edits on original-media references', async () => {
+    utilsMock.getProjectModels.mockResolvedValueOnce({ editModel: 'grok::grok-imagine-image' })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce({
+      id: 'panel-2',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      imageUrl: 'cos/panel-grok.png',
+      previousImageUrl: null,
+    })
+
+    await handleModifyAssetImageTask(buildJob({
+      type: 'storyboard',
+      panelId: 'panel-2',
+      modifyPrompt: 'merge the characters into one scene',
+      selectedAssets: [{ imageUrl: 'https://example.com/asset-a.png' }],
+      extraImageUrls: ['https://example.com/asset-b.png'],
+    }))
+
+    expect(outboundImageMock.normalizeReferenceImagesForOriginalMedia).toHaveBeenCalledWith([
+      'https://example.com/asset-a.png',
+      'https://example.com/asset-b.png',
+    ])
+    expect(outboundImageMock.normalizeToBase64ForGeneration).not.toHaveBeenCalled()
+    expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        modelId: 'grok::grok-imagine-image',
+        options: expect.objectContaining({
+          referenceImages: [
+            'https://signed/current-image.png',
+            'normalized-original-reference-image',
+          ],
+        }),
+      }),
+    )
   })
 })

@@ -65,6 +65,7 @@ describe('api specific - project create default audio model', () => {
         description: null,
         userId: 'user-1',
       },
+      select: expect.any(Object),
     })
     expect(prismaMock.novelPromotionProject.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

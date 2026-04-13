@@ -8,12 +8,20 @@ import {
   type VideoGenerationOptionValue,
   type VideoGenerationOptions,
   type VideoModelOption,
+  type VideoReferenceSelection,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
+import {
+  isVideoReferenceSelectionEmpty,
+  normalizeVideoReferenceSelection,
+} from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/reference-selection'
 import { AppIcon } from '@/components/ui/icons'
 import {
+  useAiGenerateProjectVideoPrompt,
+  useDeleteProjectPanelVideoCandidate,
   useDownloadRemoteBlob,
   useListProjectEpisodeVideoUrls,
   useMatchedVoiceLines,
+  useSelectProjectPanelVideoCandidate,
   useUpdateProjectPanelLink,
 } from '@/lib/query/hooks'
 import { useLipSync } from '@/lib/query/hooks/useStoryboards'
@@ -22,6 +30,7 @@ import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapa
 import VideoTimelinePanel from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video-stage/VideoTimelinePanel'
 import VideoRenderPanel from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video-stage/VideoRenderPanel'
 import type { VideoStageShellProps } from './video-stage-runtime/types'
+import type { CapabilitySelections } from '@/lib/model-config-contract'
 import {
   type EffectiveVideoCapabilityDefinition,
   normalizeVideoGenerationSelections,
@@ -31,7 +40,7 @@ import {
 import { projectVideoPricingTiersByFixedSelections } from '@/lib/model-pricing/video-tier'
 import { useVideoTaskStates } from './video-stage-runtime/useVideoTaskStates'
 import { useVideoPanelsProjection } from './video-stage-runtime/useVideoPanelsProjection'
-import { useVideoPromptState } from './video-stage-runtime/useVideoPromptState'
+import { useVideoPromptState, type PromptField } from './video-stage-runtime/useVideoPromptState'
 import { useVideoPanelLinking } from './video-stage-runtime/useVideoPanelLinking'
 import { useVideoVoiceLines } from './video-stage-runtime/useVideoVoiceLines'
 import { useVideoDownloadAll } from './video-stage-runtime/useVideoDownloadAll'
@@ -39,12 +48,18 @@ import { useVideoStageUiState } from './video-stage-runtime/useVideoStageUiState
 import { useVideoPanelViewport } from './video-stage-runtime/useVideoPanelViewport'
 import { useVideoFirstLastFrameFlow } from './video-stage-runtime/useVideoFirstLastFrameFlow'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
+import { getErrorMessage } from './video-stage-runtime/utils'
 import {
   buildVideoSubmissionKey,
   createVideoSubmissionBaseline,
   shouldResolveVideoSubmissionLock,
   type VideoSubmissionBaseline,
 } from './video-stage-runtime/immediate-video-submission'
+import {
+  VIDEO_GENERATION_COUNT_STORAGE_KEY,
+  getVideoGenerationCountOptions,
+  normalizeVideoGenerationCount,
+} from '@/lib/video-generation/count'
 
 export type { VideoStageShellProps } from './video-stage-runtime/types'
 
@@ -63,6 +78,45 @@ function toFieldLabel(field: string): string {
   return field.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())
 }
 
+function readStoredVideoSelectionForModel(
+  overrides: CapabilitySelections,
+  modelKey: string,
+): VideoGenerationOptions {
+  if (!modelKey) return {}
+  const rawSelection = overrides[modelKey]
+  if (!rawSelection || typeof rawSelection !== 'object' || Array.isArray(rawSelection)) return {}
+
+  const selection: VideoGenerationOptions = {}
+  for (const [field, value] of Object.entries(rawSelection)) {
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue
+    selection[field] = value
+  }
+  return selection
+}
+
+function replaceStoredVideoSelectionForModel(
+  overrides: CapabilitySelections,
+  modelKey: string,
+  selection: VideoGenerationOptions,
+): CapabilitySelections {
+  if (!modelKey) return overrides
+
+  const nextOverrides: CapabilitySelections = { ...overrides }
+  const normalizedSelection: Record<string, string | number | boolean> = {}
+  for (const [field, value] of Object.entries(selection)) {
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue
+    normalizedSelection[field] = value
+  }
+
+  if (Object.keys(normalizedSelection).length === 0) {
+    delete nextOverrides[modelKey]
+    return nextOverrides
+  }
+
+  nextOverrides[modelKey] = normalizedSelection
+  return nextOverrides
+}
+
 export function useVideoStageRuntime({
   projectId,
   episodeId,
@@ -72,6 +126,7 @@ export function useVideoStageRuntime({
   capabilityOverrides,
   videoRatio = '16:9',
   userVideoModels,
+  onUpdateProjectConfig,
   onGenerateVideo,
   onGenerateAllVideos,
   onBack,
@@ -101,6 +156,9 @@ export function useVideoStageRuntime({
   const lipSyncMutation = useLipSync(projectId, episodeId)
   const listEpisodeVideoUrlsMutation = useListProjectEpisodeVideoUrls(projectId)
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
+  const generateVideoPromptMutation = useAiGenerateProjectVideoPrompt(projectId)
+  const selectVideoCandidateMutation = useSelectProjectPanelVideoCandidate(projectId, episodeId)
+  const deleteVideoCandidateMutation = useDeleteProjectPanelVideoCandidate(projectId, episodeId)
   const downloadRemoteBlobMutation = useDownloadRemoteBlob()
   const matchedVoiceLinesQuery = useMatchedVoiceLines(projectId, episodeId)
 
@@ -182,13 +240,74 @@ export function useVideoStageRuntime({
     return unitText ? `${labelText} (${unitText})` : labelText
   }, [safeTranslate])
 
+  const defaultOptimizeInstruction = useMemo(
+    () => t('stage.defaultOptimizeInstruction'),
+    [t],
+  )
+
   const [isBatchConfigOpen, setIsBatchConfigOpen] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [isOptimizingAllPrompts, setIsOptimizingAllPrompts] = useState(false)
   const [isSubmittingVideoBatch, setIsSubmittingVideoBatch] = useState(false)
   const [submittingVideoPanelKeys, setSubmittingVideoPanelKeys] = useState<Set<string>>(new Set())
   const [submittingVideoBaselines, setSubmittingVideoBaselines] = useState<Map<string, VideoSubmissionBaseline>>(new Map())
+  const [videoGenerationCount, setVideoGenerationCountState] = useState(1)
   const [batchSelectedModel, setBatchSelectedModel] = useState('')
   const [batchGenerationOptions, setBatchGenerationOptions] = useState<VideoGenerationOptions>({})
+  const [panelReferenceSelections, setPanelReferenceSelections] = useState<Map<string, VideoReferenceSelection>>(new Map())
+  const [batchReferenceSelection, setBatchReferenceSelection] = useState<VideoReferenceSelection>({
+    includeCharacters: false,
+    includeLocation: false,
+    includeProps: false,
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const storedValue = window.localStorage.getItem(VIDEO_GENERATION_COUNT_STORAGE_KEY)
+      setVideoGenerationCountState(normalizeVideoGenerationCount(storedValue))
+    } catch {
+      setVideoGenerationCountState(1)
+    }
+  }, [])
+
+  const setVideoGenerationCount = useCallback((value: number) => {
+    const normalized = normalizeVideoGenerationCount(value)
+    setVideoGenerationCountState(normalized)
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(VIDEO_GENERATION_COUNT_STORAGE_KEY, String(normalized))
+    } catch {
+      // ignore storage write failures
+    }
+  }, [])
+
+  const persistVideoGenerationSelection = useCallback((modelKey: string, selection: VideoGenerationOptions) => {
+    if (!modelKey) return
+    const nextOverrides = replaceStoredVideoSelectionForModel(capabilityOverrides, modelKey, selection)
+    void onUpdateProjectConfig('capabilityOverrides', nextOverrides)
+  }, [capabilityOverrides, onUpdateProjectConfig])
+
+  const updatePanelReferenceSelection = useCallback((panelKey: string, selection: VideoReferenceSelection) => {
+    setPanelReferenceSelections((previous) => {
+      const nextSelection = normalizeVideoReferenceSelection(selection)
+      if (isVideoReferenceSelectionEmpty(nextSelection)) {
+        if (!previous.has(panelKey)) return previous
+        const next = new Map(previous)
+        next.delete(panelKey)
+        return next
+      }
+
+      const current = previous.get(panelKey)
+      if (JSON.stringify(current || {}) === JSON.stringify(nextSelection)) {
+        return previous
+      }
+
+      const next = new Map(previous)
+      next.set(panelKey, nextSelection)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     if (normalVideoModelOptions.length === 0) {
@@ -223,6 +342,23 @@ export function useVideoStageRuntime({
       pricingTiers: batchPricingTiers,
     })
   }, [batchPricingTiers, selectedBatchModelOption?.capabilities?.video])
+
+  const selectedBatchModelOverrides = useMemo(
+    () => readStoredVideoSelectionForModel(capabilityOverrides, batchSelectedModel),
+    [batchSelectedModel, capabilityOverrides],
+  )
+  const selectedBatchModelOverridesSignature = useMemo(
+    () => JSON.stringify(selectedBatchModelOverrides),
+    [selectedBatchModelOverrides],
+  )
+
+  useEffect(() => {
+    setBatchGenerationOptions(normalizeVideoGenerationSelections({
+      definitions: batchCapabilityDefinitions,
+      pricingTiers: batchPricingTiers,
+      selection: selectedBatchModelOverrides,
+    }))
+  }, [batchCapabilityDefinitions, batchPricingTiers, selectedBatchModelOverrides, selectedBatchModelOverridesSignature])
 
   useEffect(() => {
     setBatchGenerationOptions((previous) => {
@@ -275,7 +411,13 @@ export function useVideoStageRuntime({
     [batchEffectiveCapabilityFields],
   )
 
+  const handleBatchModelChange = useCallback((modelKey: string) => {
+    setBatchSelectedModel(modelKey)
+    void onUpdateProjectConfig('videoModel', modelKey)
+  }, [onUpdateProjectConfig])
+
   const setBatchCapabilityValue = useCallback((field: string, rawValue: string) => {
+    if (!batchSelectedModel) return
     const capabilityDefinition = batchDefinitionFieldMap.get(field)
     if (!capabilityDefinition || capabilityDefinition.options.length === 0) return
     const sample = capabilityDefinition.options[0]
@@ -286,18 +428,25 @@ export function useVideoStageRuntime({
           ? rawValue === 'true'
           : rawValue
     if (!capabilityDefinition.options.includes(parsedValue)) return
-    setBatchGenerationOptions((previous) => ({
-      ...normalizeVideoGenerationSelections({
-        definitions: batchCapabilityDefinitions,
-        pricingTiers: batchPricingTiers,
-        selection: {
-          ...previous,
-          [field]: parsedValue,
-        },
-        pinnedFields: [field],
-      }),
-    }))
-  }, [batchCapabilityDefinitions, batchDefinitionFieldMap, batchPricingTiers])
+    const nextSelection = normalizeVideoGenerationSelections({
+      definitions: batchCapabilityDefinitions,
+      pricingTiers: batchPricingTiers,
+      selection: {
+        ...batchGenerationOptions,
+        [field]: parsedValue,
+      },
+      pinnedFields: [field],
+    })
+    setBatchGenerationOptions(nextSelection)
+    persistVideoGenerationSelection(batchSelectedModel, nextSelection)
+  }, [
+    batchCapabilityDefinitions,
+    batchDefinitionFieldMap,
+    batchGenerationOptions,
+    batchPricingTiers,
+    batchSelectedModel,
+    persistVideoGenerationSelection,
+  ])
 
   const handleLipSync = useCallback(async (
     storyboardId: string,
@@ -337,7 +486,15 @@ export function useVideoStageRuntime({
       customPrompt?: string
     },
     generationOptions?: VideoGenerationOptions,
+    videoOperation?: {
+      mode: 'edit' | 'extend'
+      sourceCandidateId: string
+      instruction: string
+      extendDuration?: number
+    },
+    referenceSelection?: VideoReferenceSelection,
     panelId?: string,
+    count?: number,
   ) => {
     if (isSubmittingVideoBatch) return
 
@@ -360,7 +517,17 @@ export function useVideoStageRuntime({
     }
 
     try {
-      await onGenerateVideo(storyboardId, panelIndex, videoModel, firstLastFrame, generationOptions, panelId)
+      await onGenerateVideo(
+        storyboardId,
+        panelIndex,
+        videoModel,
+        firstLastFrame,
+        generationOptions,
+        videoOperation,
+        referenceSelection,
+        panelId,
+        count,
+      )
     } catch (error) {
       setSubmittingVideoPanelKeys((previous) => {
         if (!previous.has(panelKey)) return previous
@@ -493,7 +660,9 @@ export function useVideoStageRuntime({
     try {
       await handleGenerateAllVideosWithImmediateLock({
         videoModel: batchSelectedModel,
+        count: videoGenerationCount,
         generationOptions: batchGenerationOptions,
+        referenceSelection: batchReferenceSelection,
       })
       setIsBatchConfigOpen(false)
     } finally {
@@ -501,11 +670,198 @@ export function useVideoStageRuntime({
     }
   }, [
     batchGenerationOptions,
+    batchReferenceSelection,
     batchSelectedModel,
     canSubmitBatchGenerate,
     handleGenerateAllVideosWithImmediateLock,
     isConfirming,
   ])
+
+  const requestVideoPromptByAi = useCallback(async (params: {
+    panelId: string
+    lastPanelId?: string
+    currentPrompt?: string
+    currentVideoPrompt: string
+    modifyInstruction: string
+  }, options?: {
+    showAlert?: boolean
+  }) => {
+    try {
+      const result = await generateVideoPromptMutation.mutateAsync(params)
+      const generatedVideoPrompt = result.generatedVideoPrompt?.trim()
+      if (!generatedVideoPrompt) {
+        throw new Error(t('stage.error.generatePromptFailed'))
+      }
+      return generatedVideoPrompt
+    } catch (error) {
+      if (options?.showAlert !== false) {
+        alert(`${t('stage.error.generatePromptFailed')}: ${getErrorMessage(error) || t('errors.unknownError')}`)
+      }
+      throw error
+    }
+  }, [generateVideoPromptMutation, t])
+
+  const handleGeneratePromptByAi = useCallback(async (params: {
+    panelId: string
+    lastPanelId?: string
+    currentPrompt?: string
+    currentVideoPrompt: string
+    modifyInstruction: string
+  }) => {
+    return requestVideoPromptByAi(params)
+  }, [requestVideoPromptByAi])
+
+  const optimizablePromptTargets = useMemo(() => {
+    return allPanels.flatMap((panel, index) => {
+      const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
+      const isLinked = linkedPanels.get(panelKey) || false
+      const isLastFrame = isLinkedAsLastFrame(index)
+      if (isLastFrame && !isLinked) return []
+      if (!panel.panelId) return []
+
+      const promptField: PromptField = isLinked ? 'firstLastFramePrompt' : 'videoPrompt'
+      const nextPanel = getNextPanel(index)
+      if (isLinked && !nextPanel?.panelId) return []
+
+      const nextPanelKey = nextPanel ? `${nextPanel.storyboardId}-${nextPanel.panelIndex}` : null
+      const currentBasePrompt = getLocalPrompt(panelKey, panel.textPanel?.video_prompt, 'videoPrompt')
+      const nextBasePrompt = nextPanelKey
+        ? getLocalPrompt(nextPanelKey, nextPanel?.textPanel?.video_prompt, 'videoPrompt')
+        : undefined
+      const defaultFlPrompt = getDefaultFlPrompt(currentBasePrompt, nextBasePrompt)
+      const externalPrompt = isLinked
+        ? (flCustomPrompts.get(panelKey) || panel.firstLastFramePrompt || defaultFlPrompt)
+        : panel.textPanel?.video_prompt
+      const currentVideoPrompt = getLocalPrompt(panelKey, externalPrompt, promptField).trim()
+      if (!currentVideoPrompt) return []
+
+      return [{
+        panel,
+        panelKey,
+        promptField,
+        currentVideoPrompt,
+        lastPanelId: isLinked ? nextPanel?.panelId : undefined,
+      }]
+    })
+  }, [
+    allPanels,
+    flCustomPrompts,
+    getDefaultFlPrompt,
+    getLocalPrompt,
+    getNextPanel,
+    isLinkedAsLastFrame,
+    linkedPanels,
+  ])
+
+  const canOptimizePrompts = optimizablePromptTargets.length > 0
+
+  const handleOptimizeAllPrompts = useCallback(async () => {
+    if (isAnyTaskRunning || isOptimizingAllPrompts) return
+    if (optimizablePromptTargets.length === 0) {
+      alert(t('toolbar.noPromptsToOptimize'))
+      return
+    }
+
+    setIsOptimizingAllPrompts(true)
+    let optimizedCount = 0
+    let failedCount = 0
+
+    try {
+      for (const target of optimizablePromptTargets) {
+        const {
+          panel,
+          panelKey,
+          promptField,
+          currentVideoPrompt,
+          lastPanelId,
+        } = target
+        const hadPreviousFlCustomPrompt = flCustomPrompts.has(panelKey)
+        const previousFlCustomPrompt = flCustomPrompts.get(panelKey) || ''
+
+        try {
+          const generatedPrompt = await requestVideoPromptByAi({
+            panelId: panel.panelId!,
+            lastPanelId,
+            currentPrompt: panel.textPanel?.imagePrompt,
+            currentVideoPrompt,
+            modifyInstruction: defaultOptimizeInstruction,
+          }, { showAlert: false })
+
+          updateLocalPrompt(panelKey, generatedPrompt, promptField)
+          if (promptField === 'firstLastFramePrompt') {
+            setFlCustomPrompt(panelKey, generatedPrompt)
+          }
+
+          await onUpdateVideoPrompt(panel.storyboardId, panel.panelIndex, generatedPrompt, promptField)
+          optimizedCount += 1
+        } catch (error) {
+          failedCount += 1
+          updateLocalPrompt(panelKey, currentVideoPrompt, promptField)
+          if (promptField === 'firstLastFramePrompt') {
+            if (hadPreviousFlCustomPrompt) setFlCustomPrompt(panelKey, previousFlCustomPrompt)
+            else resetFlCustomPrompt(panelKey)
+          }
+          _ulogError('Batch optimize video prompt failed:', error)
+        }
+      }
+
+      if (failedCount > 0) {
+        alert(t('toolbar.optimizeAllPromptsPartial', { optimizedCount, failedCount }))
+        return
+      }
+
+      alert(t('toolbar.optimizeAllPromptsComplete', { count: optimizedCount }))
+    } finally {
+      setIsOptimizingAllPrompts(false)
+    }
+  }, [
+    defaultOptimizeInstruction,
+    flCustomPrompts,
+    isAnyTaskRunning,
+    isOptimizingAllPrompts,
+    onUpdateVideoPrompt,
+    optimizablePromptTargets,
+    requestVideoPromptByAi,
+    resetFlCustomPrompt,
+    setFlCustomPrompt,
+    t,
+    updateLocalPrompt,
+  ])
+
+  const handleSelectVideoCandidate = useCallback(async (panelId: string, candidateId: string) => {
+    try {
+      await selectVideoCandidateMutation.mutateAsync({ panelId, candidateId })
+    } catch (error) {
+      alert(`${t('stage.error.selectVideoCandidateFailed')}: ${getErrorMessage(error) || t('errors.unknownError')}`)
+      throw error
+    }
+  }, [selectVideoCandidateMutation, t])
+
+  const handleDeleteVideoCandidate = useCallback(async (panelId: string, candidateId: string) => {
+    try {
+      await deleteVideoCandidateMutation.mutateAsync({ panelId, candidateId })
+    } catch (error) {
+      alert(`${t('stage.error.deleteVideoCandidateFailed')}: ${getErrorMessage(error) || t('errors.unknownError')}`)
+      throw error
+    }
+  }, [deleteVideoCandidateMutation, t])
+
+  const handleDownloadVideoCandidate = useCallback(async (videoUrl: string, fileName: string) => {
+    try {
+      const blob = await downloadRemoteBlobMutation.mutateAsync(videoUrl)
+      const objectUrl = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      window.URL.revokeObjectURL(objectUrl)
+      document.body.removeChild(anchor)
+    } catch (error) {
+      alert(`${t('stage.downloadFailed')}: ${getErrorMessage(error) || t('errors.unknownError')}`)
+      throw error
+    }
+  }, [downloadRemoteBlobMutation, t])
 
   return (
     <div className="space-y-6 pb-20">
@@ -516,6 +872,9 @@ export function useVideoStageRuntime({
         failedCount={failedCount}
         isAnyTaskRunning={isAnyTaskRunning}
         isDownloading={isDownloading}
+        isOptimizingPrompts={isOptimizingAllPrompts}
+        canOptimizePrompts={canOptimizePrompts}
+        onOptimizeAllPrompts={() => { void handleOptimizeAllPrompts() }}
         onGenerateAll={handleOpenBatchGenerateModal}
         onDownloadAll={handleDownloadAllVideos}
         onBack={onBack}
@@ -555,7 +914,15 @@ export function useVideoStageRuntime({
         flCapabilityFields={flCapabilityFields}
         flMissingCapabilityFields={flMissingCapabilityFields}
         flCustomPrompts={flCustomPrompts}
+        defaultOptimizeInstruction={defaultOptimizeInstruction}
         onGenerateVideo={handleGenerateVideoWithImmediateLock}
+        panelReferenceSelections={panelReferenceSelections}
+        onUpdateReferenceSelection={updatePanelReferenceSelection}
+        videoGenerationCount={videoGenerationCount}
+        onVideoGenerationCountChange={setVideoGenerationCount}
+        onSelectVideoCandidate={handleSelectVideoCandidate}
+        onDeleteVideoCandidate={handleDeleteVideoCandidate}
+        onDownloadVideoCandidate={handleDownloadVideoCandidate}
         onUpdatePanelVideoModel={onUpdatePanelVideoModel}
         onLipSync={handleLipSync}
         onToggleLink={handleToggleLink}
@@ -572,6 +939,8 @@ export function useVideoStageRuntime({
         getLocalPrompt={getLocalPrompt}
         updateLocalPrompt={updateLocalPrompt}
         savePrompt={savePrompt}
+        onGeneratePromptByAi={handleGeneratePromptByAi}
+        onUpdateVideoGenerationOptions={persistVideoGenerationSelection}
       />
 
       {isBatchConfigOpen && (
@@ -595,7 +964,7 @@ export function useVideoStageRuntime({
             <ModelCapabilityDropdown
               models={normalVideoModelOptions}
               value={batchSelectedModel || undefined}
-              onModelChange={setBatchSelectedModel}
+              onModelChange={handleBatchModelChange}
               capabilityFields={batchCapabilityFields.map((field) => ({
                 field: field.field,
                 label: renderCapabilityLabel(field),
@@ -606,6 +975,75 @@ export function useVideoStageRuntime({
               onCapabilityChange={(field, rawValue) => setBatchCapabilityValue(field, rawValue)}
               placeholder={t('panelCard.selectModel')}
             />
+
+            <div className="flex items-center justify-between rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-4 py-3">
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-[var(--glass-text-primary)]">
+                  {t('panelCard.videoCountLabel')}
+                </div>
+                <div className="text-xs text-[var(--glass-text-tertiary)]">
+                  {t('panelCard.videoCountHint')}
+                </div>
+              </div>
+              <select
+                value={String(videoGenerationCount)}
+                onChange={(event) => setVideoGenerationCount(Number(event.target.value))}
+                className="glass-select-base min-w-[96px] rounded-lg px-3 py-2 text-sm"
+              >
+                {getVideoGenerationCountOptions().map((option) => (
+                  <option key={option} value={option}>
+                    {t('panelCard.videoCountOption', { count: option })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-4 py-3">
+              <div className="text-sm font-medium text-[var(--glass-text-primary)]">
+                {t('panelCard.referenceAssetsLabel')}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm text-[var(--glass-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={batchReferenceSelection.includeCharacters === true}
+                    onChange={(event) => setBatchReferenceSelection((previous) => ({
+                      ...previous,
+                      includeCharacters: event.target.checked,
+                    }))}
+                    className="h-4 w-4 rounded border border-[var(--glass-stroke-base)] bg-transparent accent-[var(--glass-accent-from)]"
+                  />
+                  <span>{t('panelCard.referenceCharacters')}</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--glass-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={batchReferenceSelection.includeLocation === true}
+                    onChange={(event) => setBatchReferenceSelection((previous) => ({
+                      ...previous,
+                      includeLocation: event.target.checked,
+                    }))}
+                    className="h-4 w-4 rounded border border-[var(--glass-stroke-base)] bg-transparent accent-[var(--glass-accent-from)]"
+                  />
+                  <span>{t('panelCard.referenceLocation')}</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--glass-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={batchReferenceSelection.includeProps === true}
+                    onChange={(event) => setBatchReferenceSelection((previous) => ({
+                      ...previous,
+                      includeProps: event.target.checked,
+                    }))}
+                    className="h-4 w-4 rounded border border-[var(--glass-stroke-base)] bg-transparent accent-[var(--glass-accent-from)]"
+                  />
+                  <span>{t('panelCard.referenceProps')}</span>
+                </label>
+              </div>
+              <div className="mt-2 text-xs text-[var(--glass-text-tertiary)]">
+                {t('panelCard.referenceAssetsHint')}
+              </div>
+            </div>
 
             <div className="flex justify-end gap-2 pt-1">
               <button

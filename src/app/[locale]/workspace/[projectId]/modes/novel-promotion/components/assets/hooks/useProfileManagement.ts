@@ -11,12 +11,12 @@ import { useState, useCallback, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { CharacterProfileData, parseProfileData } from '@/types/character-profile'
 import {
-    useProjectAssets,
     useRefreshProjectAssets,
     useDeleteProjectCharacter,
     useConfirmProjectCharacterProfile,
     useBatchConfirmProjectCharacterProfiles,
 } from '@/lib/query/hooks'
+import { useAssetStageProjectAssets } from '../AssetStageProjectAssetsContext'
 
 interface UseProfileManagementProps {
     projectId: string
@@ -29,8 +29,8 @@ export function useProfileManagement({
 }: UseProfileManagementProps) {
     const t = useTranslations('assets')
     // 🔥 直接订阅缓存 - 消除 props drilling
-    const { data: assets } = useProjectAssets(projectId)
-    const characters = useMemo(() => assets?.characters ?? [], [assets?.characters])
+    const assets = useAssetStageProjectAssets(projectId)
+    const characters = useMemo(() => assets.characters, [assets.characters])
 
     // 🔥 使用刷新函数
     const refreshAssets = useRefreshProjectAssets(projectId)

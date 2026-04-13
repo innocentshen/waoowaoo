@@ -54,6 +54,7 @@ interface UseProviderCardStateParams {
 const EMPTY_MODEL_FORM: ModelFormState = {
   name: '',
   modelId: '',
+  probeBeforeAdd: true,
   enableCustomPricing: false,
   priceInput: '',
   priceOutput: '',
@@ -152,6 +153,29 @@ export async function probeModelLlmProtocolViaApi(params: {
 
   return {
     llmProtocol: payload.protocol,
+    llmProtocolCheckedAt: checkedAt,
+  }
+}
+
+export function buildAddModelLlmProtocolFallback(params: {
+  providerId: string
+  modelType: ProviderCardModelType
+  probeBeforeAdd?: boolean
+  checkedAt?: string
+}): Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null {
+  if (!shouldProbeModelLlmProtocol({ providerId: params.providerId, modelType: params.modelType })) {
+    return null
+  }
+  if (params.probeBeforeAdd !== false) {
+    return null
+  }
+
+  const checkedAt = typeof params.checkedAt === 'string' && params.checkedAt.trim().length > 0
+    ? params.checkedAt.trim()
+    : new Date().toISOString()
+
+  return {
+    llmProtocol: 'chat-completions',
     llmProtocolCheckedAt: checkedAt,
   }
 }
@@ -659,8 +683,15 @@ export function useProviderCardState({
 
     setIsModelSavePending(true)
     try {
-      let protocolFields: Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null = null
-      if (shouldProbeModelLlmProtocol({ providerId: provider.id, modelType: type })) {
+      const shouldProbeProtocol = shouldProbeModelLlmProtocol({ providerId: provider.id, modelType: type })
+      let protocolFields: Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null =
+        buildAddModelLlmProtocolFallback({
+          providerId: provider.id,
+          modelType: type,
+          probeBeforeAdd: newModel.probeBeforeAdd,
+        })
+
+      if (shouldProbeProtocol && newModel.probeBeforeAdd !== false) {
         const flushed = await flushConfigBeforeProbe()
         if (!flushed) return
 

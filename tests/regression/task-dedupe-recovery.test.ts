@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_STATUS, TASK_TYPE } from '@/lib/task/types'
-import { createTask } from '@/lib/task/service'
+import { createTask, tryUpdateTaskProgress } from '@/lib/task/service'
 import { prisma } from '../helpers/prisma'
 import { resetBillingState } from '../helpers/db-reset'
-import { createTestProject, createTestUser } from '../helpers/billing-fixtures'
+import { createQueuedTask, createTestProject, createTestUser } from '../helpers/billing-fixtures'
 
 const reconcileMock = vi.hoisted(() => ({
   isJobAlive: vi.fn(async () => true),
@@ -103,6 +103,69 @@ describe('regression - task dedupe recovery', () => {
       status: TASK_STATUS.FAILED,
       errorCode: 'RECONCILE_ORPHAN',
       dedupeKey: null,
+    })
+  })
+
+  it('preserves locale-bearing payload fields when progress updates task payload', async () => {
+    const user = await createTestUser()
+    const project = await createTestProject(user.id)
+    const task = await createQueuedTask({
+      id: 'video-progress-regression-1',
+      userId: user.id,
+      projectId: project.id,
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'NovelPromotionPanel',
+      targetId: 'panel-progress-regression-1',
+      payload: {
+        storyboardId: 'storyboard-progress-regression-1',
+        panelIndex: 2,
+        videoModel: 'seedance',
+        generationOptions: {
+          duration: 5,
+          aspectRatio: '16:9',
+        },
+        meta: {
+          locale: 'zh',
+          runId: 'run-progress-regression-1',
+        },
+      },
+    })
+
+    const updated = await tryUpdateTaskProgress(task.id, 35, {
+      stage: 'submitting',
+      stageLabel: 'Submitting video task',
+      trace: {
+        requestId: 'req-progress-regression-1',
+      },
+      meta: {
+        flowStageIndex: 2,
+      },
+    })
+
+    expect(updated).toBe(true)
+
+    const refreshed = await prisma.task.findUnique({ where: { id: task.id } })
+    expect(refreshed).toMatchObject({
+      progress: 35,
+      payload: {
+        storyboardId: 'storyboard-progress-regression-1',
+        panelIndex: 2,
+        videoModel: 'seedance',
+        generationOptions: {
+          duration: 5,
+          aspectRatio: '16:9',
+        },
+        stage: 'submitting',
+        stageLabel: 'Submitting video task',
+        trace: {
+          requestId: 'req-progress-regression-1',
+        },
+        meta: {
+          locale: 'zh',
+          runId: 'run-progress-regression-1',
+          flowStageIndex: 2,
+        },
+      },
     })
   })
 })

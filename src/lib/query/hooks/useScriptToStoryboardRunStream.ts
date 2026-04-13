@@ -4,13 +4,14 @@ import { useRunStreamState, type RunResult } from './useRunStreamState'
 import { TASK_TYPE } from '@/lib/task/types'
 import { apiFetch } from '@/lib/api-fetch'
 import { selectRecoverableRun } from '@/lib/run-runtime/recovery'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 export type ScriptToStoryboardRunParams = {
   episodeId: string
   model?: string
   temperature?: number
   reasoning?: boolean
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffort
 }
 
 export type ScriptToStoryboardRunResult = RunResult

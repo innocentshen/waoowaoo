@@ -20,9 +20,11 @@ export const ASPECT_RATIO_CONFIGS: Record<string, { label: string; isVertical: b
 }
 
 // 配置页面使用的选项列表（从 ASPECT_RATIO_CONFIGS 派生）
-export const VIDEO_RATIOS = Object.entries(ASPECT_RATIO_CONFIGS).map(([value, config]) => ({
+const COMMON_VIDEO_RATIO_VALUES = ['16:9', '9:16', '1:1', '3:2', '2:3'] as const
+
+export const VIDEO_RATIOS = COMMON_VIDEO_RATIO_VALUES.map((value) => ({
   value,
-  label: config.label
+  label: ASPECT_RATIO_CONFIGS[value].label
 }))
 
 // 获取比例配置

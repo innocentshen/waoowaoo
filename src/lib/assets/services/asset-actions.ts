@@ -11,6 +11,7 @@ import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { ensureGlobalLocationImageSlots, ensureProjectLocationImageSlots } from '@/lib/image-generation/location-slots'
 import { hasCharacterAppearanceOutput, hasGlobalCharacterAppearanceOutput, hasGlobalCharacterOutput, hasGlobalLocationImageOutput, hasGlobalLocationOutput, hasLocationImageOutput } from '@/lib/task/has-output'
 import { sanitizeImageInputsForTaskPayload } from '@/lib/media/outbound-image'
+import { getGrokEditInputImageLimitExceededMessage } from '@/lib/providers/grok/edit-input-limit'
 import { PRIMARY_APPEARANCE_INDEX, isArtStyleValue, removeLocationPromptSuffix, removePropPromptSuffix, type ArtStyleValue } from '@/lib/constants'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { deleteObject } from '@/lib/storage'
@@ -417,6 +418,16 @@ async function submitGlobalAssetModifyTask(input: AssetModifyInput) {
   }
   const userModelConfig = await getUserModelConfig(input.access.userId)
   const imageModel = userModelConfig.editModel
+  const grokLimitError = getGrokEditInputImageLimitExceededMessage(
+    imageModel || '',
+    1 + new Set(extraImageAudit.normalized).size,
+  )
+  if (grokLimitError) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'GROK_EDIT_INPUT_IMAGE_LIMIT_EXCEEDED',
+      message: grokLimitError,
+    })
+  }
   let billingPayload: Record<string, unknown>
   try {
     billingPayload = buildImageBillingPayloadFromUserConfig({
@@ -488,6 +499,16 @@ async function submitProjectAssetModifyTask(input: AssetModifyInput) {
     },
   }
   const projectModelConfig = await getProjectModelConfig(projectId, input.access.userId)
+  const grokLimitError = getGrokEditInputImageLimitExceededMessage(
+    projectModelConfig.editModel || '',
+    1 + new Set(extraImageAudit.normalized).size,
+  )
+  if (grokLimitError) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'GROK_EDIT_INPUT_IMAGE_LIMIT_EXCEEDED',
+      message: grokLimitError,
+    })
+  }
   let billingPayload: Record<string, unknown>
   try {
     billingPayload = await buildImageBillingPayload({

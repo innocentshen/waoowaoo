@@ -126,6 +126,8 @@ export async function chatCompletionStream(
           modelId: resolvedModelId,
           messages,
           temperature,
+          reasoning,
+          reasoningEffort,
         })
         : await runOpenAICompatChatCompletion({
           userId,
@@ -133,6 +135,8 @@ export async function chatCompletionStream(
           modelId: resolvedModelId,
           messages,
           temperature,
+          reasoning,
+          reasoningEffort,
         })
       const completionParts = getCompletionParts(completion)
       let seq = 1

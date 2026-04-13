@@ -57,6 +57,64 @@ export function useRegenerateProjectPanelImage(projectId: string) {
     })
 }
 
+export interface UploadProjectStoryboardPanelImageResponse {
+    success: boolean
+    panelId: string
+    imageKey: string
+    imageUrl: string
+}
+
+export function useUploadProjectStoryboardPanelImage(projectId: string) {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ panelId, file }: { panelId: string; file: File }) => {
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('type', 'storyboard')
+            formData.append('id', panelId)
+
+            return await requestJsonWithError<UploadProjectStoryboardPanelImageResponse>(
+                `/api/novel-promotion/${projectId}/upload-asset-image`,
+                {
+                    method: 'POST',
+                    body: formData,
+                },
+                '上传分镜图片失败',
+            )
+        },
+        onSettled: () => {
+            invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+        },
+    })
+}
+
+export interface SelectProjectStoryboardSourceImageResponse {
+    success: boolean
+    panelId: string
+    sourcePanelId: string
+    imageUrl: string | null
+}
+
+export function useSelectProjectStoryboardSourceImage(projectId: string) {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ targetPanelId, sourcePanelId }: { targetPanelId: string; sourcePanelId: string }) => {
+            return await requestJsonWithError<SelectProjectStoryboardSourceImageResponse>(
+                `/api/novel-promotion/${projectId}/panel/select-source-image`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetPanelId, sourcePanelId }),
+                },
+                '选择分镜画面失败',
+            )
+        },
+        onSettled: () => {
+            invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+        },
+    })
+}
+
 /**
  * 修改镜头图片（storyboard）
  */
@@ -224,8 +282,12 @@ export function useCreateProjectStoryboardGroup(projectId: string) {
                 body: JSON.stringify(payload),
             }, '添加失败')
         },
-        onSettled: () => {
-            invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+        onSettled: async (_data, _error, variables) => {
+            await invalidateQueryTemplates(queryClient, [
+                queryKeys.projectAssets.all(projectId),
+                queryKeys.episodeData(projectId, variables.episodeId),
+                queryKeys.storyboards.all(variables.episodeId),
+            ])
         },
     })
 }
@@ -244,8 +306,12 @@ export function useMoveProjectStoryboardGroup(projectId: string) {
                 body: JSON.stringify(payload),
             }, '移动失败')
         },
-        onSettled: () => {
-            invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+        onSettled: async (_data, _error, variables) => {
+            await invalidateQueryTemplates(queryClient, [
+                queryKeys.projectAssets.all(projectId),
+                queryKeys.episodeData(projectId, variables.episodeId),
+                queryKeys.storyboards.all(variables.episodeId),
+            ])
         },
     })
 }

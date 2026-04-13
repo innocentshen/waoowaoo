@@ -52,6 +52,7 @@ export default function ConfigStage() {
 
   return (
     <NovelInputStage
+      projectId={projectId}
       novelText={novelText}
       episodeName={episodeName}
       onNovelTextChange={runtime.onNovelTextChange}

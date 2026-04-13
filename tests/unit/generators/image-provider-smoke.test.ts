@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const googleGenerateContentMock = vi.hoisted(() => vi.fn())
+const googleGenerateImagesMock = vi.hoisted(() => vi.fn())
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
 const getImageBase64CachedMock = vi.hoisted(() => vi.fn(async () => 'data:image/png;base64,UkVG'))
 const arkImageGenerationMock = vi.hoisted(() => vi.fn())
@@ -10,6 +11,7 @@ vi.mock('@google/genai', () => ({
   GoogleGenAI: class GoogleGenAI {
     models = {
       generateContent: googleGenerateContentMock,
+      generateImages: googleGenerateImagesMock,
     }
   },
   HarmCategory: {
@@ -41,7 +43,7 @@ vi.mock('@/lib/media/outbound-image', () => ({
 
 import { ArkSeedreamGenerator } from '@/lib/generators/ark'
 import { GeminiCompatibleImageGenerator } from '@/lib/generators/image/gemini-compatible'
-import { GoogleGeminiImageGenerator } from '@/lib/generators/image/google'
+import { GoogleGeminiImageGenerator, GoogleImagenGenerator } from '@/lib/generators/image/google'
 
 describe('image provider smoke tests', () => {
   beforeEach(() => {
@@ -260,5 +262,46 @@ describe('image provider smoke tests', () => {
     expect(content.contents[0].parts[0].inlineData).toEqual({ mimeType: 'image/png', data: 'UkVG' })
     expect(content.contents[0].parts[1].text).toBe('restyle this portrait')
     expect(content.config.imageConfig).toEqual({ imageSize: '2K' })
+  })
+
+  it('Google Imagen transmits aspect ratio and image size', async () => {
+    getProviderConfigMock.mockResolvedValueOnce({
+      id: 'google',
+      apiKey: 'google-key',
+    })
+    googleGenerateImagesMock.mockResolvedValueOnce({
+      generatedImages: [
+        {
+          image: {
+            imageBytes: 'SU1BR0VO',
+          },
+        },
+      ],
+    })
+
+    const generator = new GoogleImagenGenerator('imagen-4.0-generate-001')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'draw a skateboard',
+      options: {
+        aspectRatio: '16:9',
+        resolution: '2K',
+      },
+    })
+
+    expect(result).toEqual({
+      success: true,
+      imageBase64: 'SU1BR0VO',
+      imageUrl: 'data:image/png;base64,SU1BR0VO',
+    })
+    expect(googleGenerateImagesMock).toHaveBeenCalledWith({
+      model: 'imagen-4.0-generate-001',
+      prompt: 'draw a skateboard',
+      config: {
+        numberOfImages: 1,
+        aspectRatio: '16:9',
+        imageSize: '2K',
+      },
+    })
   })
 })

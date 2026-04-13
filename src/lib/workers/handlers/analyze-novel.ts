@@ -13,6 +13,7 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { seedProjectLocationBackedImageSlots } from '@/lib/assets/services/location-backed-assets'
 import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -47,12 +48,7 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const projectId = job.data.projectId
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

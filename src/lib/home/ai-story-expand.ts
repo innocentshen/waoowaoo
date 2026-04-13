@@ -11,6 +11,7 @@ interface ExpandHomeStoryPayload {
 export interface ExpandHomeStoryParams {
   apiFetch: ApiFetchLike
   prompt: string
+  projectId?: string
 }
 
 export interface ExpandHomeStoryResult {
@@ -20,13 +21,22 @@ export interface ExpandHomeStoryResult {
 export async function expandHomeStory({
   apiFetch,
   prompt,
+  projectId,
 }: ExpandHomeStoryParams): Promise<ExpandHomeStoryResult> {
+  const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
   const response = await apiFetch('/api/user/ai-story-expand', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-    }),
+    body: JSON.stringify(
+      normalizedProjectId
+        ? {
+            prompt,
+            projectId: normalizedProjectId,
+          }
+        : {
+            prompt,
+          },
+    ),
   })
 
   const result = await resolveTaskResponse<ExpandHomeStoryPayload>(response)

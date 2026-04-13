@@ -1,20 +1,29 @@
 import OpenAI from 'openai'
 import type { ChatCompletionStreamCallbacks } from '@/lib/llm/types'
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
-import { extractStreamDeltaParts } from '@/lib/llm/utils'
+import { extractStreamDeltaParts, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
 import { withStreamChunkTimeout } from '@/lib/llm/stream-timeout'
 import { emitStreamChunk, emitStreamStage, resolveStreamStepMeta } from '@/lib/llm/stream-helpers'
+import { isLikelyOpenAIReasoningModel } from '@/lib/llm/reasoning-capability'
 import type { OpenAICompatChatRequest } from '../types'
 import { createOpenAICompatClient, resolveOpenAICompatClientConfig } from './common'
 
 export async function runOpenAICompatChatCompletion(input: OpenAICompatChatRequest): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
   const client = createOpenAICompatClient(config)
-  return await client.chat.completions.create({
+  const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
+  const request: Record<string, unknown> = {
     model: input.modelId,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-    temperature: input.temperature,
-  })
+  }
+  if (useReasoningControls) {
+    request.reasoning_effort = mapOpenAICompatReasoningEffort(input.reasoningEffort)
+  } else {
+    request.temperature = input.temperature
+  }
+  return await client.chat.completions.create(
+    request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  )
 }
 
 type OpenAIStreamWithFinal = AsyncIterable<unknown> & {
@@ -28,14 +37,22 @@ export async function runOpenAICompatChatCompletionStream(
   const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
   const client = createOpenAICompatClient(config)
   const stepMeta = resolveStreamStepMeta({})
+  const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
 
   emitStreamStage(callbacks, stepMeta, 'streaming', 'openai-compat')
-  const stream = await client.chat.completions.create({
+  const request: Record<string, unknown> = {
     model: input.modelId,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-    temperature: input.temperature,
     stream: true,
-  } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming)
+  }
+  if (useReasoningControls) {
+    request.reasoning_effort = mapOpenAICompatReasoningEffort(input.reasoningEffort)
+  } else {
+    request.temperature = input.temperature
+  }
+  const stream = await client.chat.completions.create(
+    request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+  )
 
   let text = ''
   let reasoning = ''

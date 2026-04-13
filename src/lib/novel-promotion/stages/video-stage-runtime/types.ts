@@ -5,6 +5,8 @@ import type {
   Clip,
   FirstLastFrameParams,
   VideoGenerationOptions,
+  VideoOperationRequest,
+  VideoReferenceSelection,
   Storyboard,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
@@ -43,13 +45,17 @@ export interface VideoStageShellProps {
   capabilityOverrides: CapabilitySelections
   videoRatio?: string
   userVideoModels?: VideoModelOption[]
+  onUpdateProjectConfig: (key: string, value: unknown) => Promise<void>
   onGenerateVideo: (
     storyboardId: string,
     panelIndex: number,
     videoModel?: string,
     firstLastFrame?: FirstLastFrameParams,
     generationOptions?: VideoGenerationOptions,
+    videoOperation?: VideoOperationRequest,
+    referenceSelection?: VideoReferenceSelection,
     panelId?: string,
+    count?: number,
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onBack: () => void

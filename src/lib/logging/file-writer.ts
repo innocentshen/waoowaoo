@@ -90,11 +90,8 @@ async function resolveProjectName(projectId: string): Promise<string | null> {
     pendingLookups.add(projectId)
 
     try {
-        const { prisma } = await import('@/lib/prisma')
-        const project = await prisma.project.findUnique({
-            where: { id: projectId },
-            select: { name: true },
-        })
+        const { findProjectBaseById } = await import('@/lib/projects/project-read')
+        const project = await findProjectBaseById(projectId)
         if (project?.name) {
             projectNameCache.set(projectId, project.name)
             return project.name

@@ -100,6 +100,8 @@
   "baseUrl": "Base URL",
   "configureBaseUrl": "Configure URL",
   "addModel": "Add Model",
+  "probeBeforeAdd": "Probe before save",
+  "probeBeforeAddHint": "When off, the model skips probing and is saved as chat-completions",
   "batchModeHalfPrice": "Batch mode (50% price)",
   "openaiCompatVideoOnlyHint": "Only OpenAI official-format image-to-video models are supported.",
   "typeText": "Text",

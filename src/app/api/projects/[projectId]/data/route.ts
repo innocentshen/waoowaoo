@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
+import { findProjectWithUserById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -25,10 +26,7 @@ export const GET = apiHandler(async (
   const { session } = authResult
 
   // 获取基础项目信息
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: { user: true }
-  })
+  const project = await findProjectWithUserById(projectId)
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
@@ -39,7 +37,7 @@ export const GET = apiHandler(async (
   }
 
   // 🔥 更新最近访问时间（异步，不阻塞响应）
-  prisma.project.update({
+  prisma.project.updateMany({
     where: { id: projectId },
     data: { lastAccessedAt: new Date() }
   }).catch(err => _ulogError('更新访问时间失败:', err))

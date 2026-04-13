@@ -1,4 +1,5 @@
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
+import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from './service'
 import type { MediaRef } from './types'
 
@@ -108,6 +109,20 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
     candidateMediaUrls.push(media?.url || candidate)
   }
 
+  const videoCandidates = await Promise.all(
+    resolvePanelVideoCandidates({
+      videoCandidates: typeof panel.videoCandidates === 'string' ? panel.videoCandidates : null,
+      videoUrl: typeof panel.videoUrl === 'string' ? panel.videoUrl : null,
+      videoGenerationMode: typeof panel.videoGenerationMode === 'string' ? panel.videoGenerationMode : null,
+    }).map(async (candidate) => {
+      const media = await resolveMediaRefFromLegacyValue(candidate.videoUrl)
+      return {
+        ...candidate,
+        videoUrl: media?.url || candidate.videoUrl,
+      }
+    }),
+  )
+
   return {
     ...panel,
     media: imageMedia,
@@ -122,6 +137,7 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
     sketchImageUrl: sketchImageMedia?.url || panel.sketchImageUrl || null,
     previousImageUrl: previousImageMedia?.url || panel.previousImageUrl || null,
     candidateImages: candidateRaw.length > 0 ? JSON.stringify(candidateMediaUrls) : panel.candidateImages,
+    videoCandidates,
   }
 }
 

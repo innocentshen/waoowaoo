@@ -80,4 +80,15 @@ describe('task error message normalization', () => {
     expect(summary.code).toBe('EMPTY_RESPONSE')
     expect(summary.message).toContain('模型返回空响应')
   })
+
+  it('prefers user-friendly message for EXTERNAL_ERROR', () => {
+    const summary = resolveTaskErrorSummary({
+      error: {
+        code: 'EXTERNAL_ERROR',
+        message: 'External service failed',
+      },
+    })
+    expect(summary.code).toBe('EXTERNAL_ERROR')
+    expect(summary.message).toContain('外部服务暂时不可用')
+  })
 })

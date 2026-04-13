@@ -35,6 +35,7 @@ export interface ProviderCardProps {
 export interface ModelFormState {
   name: string
   modelId: string
+  probeBeforeAdd?: boolean
   enableCustomPricing?: boolean
   priceInput?: string
   priceOutput?: string

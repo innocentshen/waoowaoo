@@ -34,7 +34,9 @@ export class GrokVideoGenerator extends BaseVideoGenerator {
     return await generateGrokVideo({
       userId: params.userId,
       imageUrl: params.imageUrl,
+      videoUrl: params.videoUrl,
       prompt: params.prompt,
+      referenceImages: params.referenceImages,
       options: {
         ...params.options,
         provider,

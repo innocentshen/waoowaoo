@@ -22,6 +22,12 @@ const generatorApiMock = vi.hoisted(() => ({
   generateVideo: vi.fn(),
 }))
 
+const configServiceMock = vi.hoisted(() => ({
+  getProjectModelConfig: vi.fn(),
+  getUserModelConfig: vi.fn(),
+  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
+}))
+
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/task/service', () => taskServiceMock)
 vi.mock('@/lib/async-poll', () => asyncPollMock)
@@ -33,13 +39,13 @@ vi.mock('@/lib/storage', () => ({
 }))
 vi.mock('@/lib/fonts', () => ({ initializeFonts: vi.fn(), createLabelSVG: vi.fn() }))
 vi.mock('@/lib/media-process', () => ({ processMediaResult: vi.fn() }))
-vi.mock('@/lib/config-service', () => ({
-  getProjectModelConfig: vi.fn(),
-  getUserModelConfig: vi.fn(),
-  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
-}))
+vi.mock('@/lib/config-service', () => configServiceMock)
 
-import { resolveImageSourceFromGeneration, resolveVideoSourceFromGeneration } from '@/lib/workers/utils'
+import {
+  resolveImageSourceFromGeneration,
+  resolveVideoSourceFromGeneration,
+  sanitizeVideoRequestOptionsForModel,
+} from '@/lib/workers/utils'
 
 function buildJob(): Job<TaskJobData> {
   return {
@@ -60,6 +66,7 @@ function buildJob(): Job<TaskJobData> {
 describe('worker utils video generation resume', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    configServiceMock.resolveProjectModelCapabilityGenerationOptions.mockResolvedValue({})
   })
 
   it('continues polling from existing externalId without re-submitting generation', async () => {
@@ -113,5 +120,50 @@ describe('worker utils video generation resume', () => {
     expect(prismaMock.task.findUnique).not.toHaveBeenCalled()
     expect(asyncPollMock.pollAsyncTask).not.toHaveBeenCalled()
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('strips Grok edit-only unsupported capability overrides', () => {
+    expect(sanitizeVideoRequestOptionsForModel({
+      modelKey: 'grok::grok-imagine-video',
+      generationMode: 'edit',
+      options: {
+        prompt: 'tighten the motion',
+        duration: 4,
+        resolution: '720p',
+        aspectRatio: '16:9',
+      },
+    })).toEqual({
+      prompt: 'tighten the motion',
+    })
+
+    expect(sanitizeVideoRequestOptionsForModel({
+      modelKey: 'grok::grok-imagine-video',
+      generationMode: 'extend',
+      options: {
+        prompt: 'continue forward',
+        duration: 4,
+        resolution: '720p',
+        aspectRatio: '16:9',
+      },
+    })).toEqual({
+      prompt: 'continue forward',
+      duration: 4,
+    })
+
+    expect(sanitizeVideoRequestOptionsForModel({
+      modelKey: 'fal::kling',
+      generationMode: 'edit',
+      options: {
+        prompt: 'keep provider-specific options',
+        duration: 4,
+        resolution: '720p',
+        aspectRatio: '16:9',
+      },
+    })).toEqual({
+      prompt: 'keep provider-specific options',
+      duration: 4,
+      resolution: '720p',
+      aspectRatio: '16:9',
+    })
   })
 })

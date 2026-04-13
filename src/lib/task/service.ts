@@ -35,6 +35,31 @@ function toObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function mergePayloadObjects(current: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...toObject(current) }
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue
+
+    const currentValue = merged[key]
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      currentValue &&
+      typeof currentValue === 'object' &&
+      !Array.isArray(currentValue)
+    ) {
+      merged[key] = mergePayloadObjects(currentValue, value as Record<string, unknown>)
+      continue
+    }
+
+    merged[key] = value
+  }
+
+  return merged
+}
+
 function normalizeLocale(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim().toLowerCase()
@@ -431,11 +456,34 @@ export async function touchTaskHeartbeat(taskId: string) {
 }
 
 export async function tryUpdateTaskProgress(taskId: string, progress: number, payload?: Record<string, unknown> | null) {
+  if (!payload) {
+    const result = await taskModel.updateMany({
+      where: activeTaskWhere(taskId),
+      data: { progress },
+    })
+    return result.count > 0
+  }
+
+  const current = await withPrismaRetry(() =>
+    taskModel.findUnique({
+      where: { id: taskId },
+      select: {
+        status: true,
+        payload: true,
+      },
+    })
+  )
+
+  if (!current || !isActiveStatus(current.status)) {
+    return false
+  }
+
+  const nextPayload = mergePayloadObjects(current.payload, payload)
   const result = await taskModel.updateMany({
     where: activeTaskWhere(taskId),
     data: {
       progress,
-      ...(payload ? { payload: toNullableJson(payload) } : {}),
+      payload: toNullableJson(nextPayload),
     },
   })
   return result.count > 0

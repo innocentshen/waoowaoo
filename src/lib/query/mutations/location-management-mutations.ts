@@ -1,6 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { logError as _ulogError } from '@/lib/logging/core'
 import type { Project } from '@/types/project'
+import type { AssetSummary } from '@/lib/assets/contracts'
 import { queryKeys } from '../keys'
 import type { ProjectAssetsData } from '../hooks/useProjectAssets'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
@@ -19,6 +20,7 @@ import {
 
 interface DeleteProjectLocationContext {
     previousAssets: ProjectAssetsData | undefined
+    previousUnifiedAssets: Array<[QueryKey, AssetSummary[] | undefined]>
     previousProject: Project | undefined
 }
 
@@ -48,6 +50,43 @@ function removeLocationFromProject(
     }
 }
 
+function removeLocationFromUnifiedAssets(
+    previous: AssetSummary[] | undefined,
+    locationId: string,
+): AssetSummary[] | undefined {
+    if (!previous) return previous
+    return previous.filter((asset) => !(asset.kind === 'location' && asset.id === locationId))
+}
+
+function getProjectUnifiedAssetSnapshots(
+    queryClient: ReturnType<typeof useQueryClient>,
+    projectId: string,
+): Array<[QueryKey, AssetSummary[] | undefined]> {
+    return queryClient.getQueriesData<AssetSummary[]>({
+        queryKey: queryKeys.assets.all('project', projectId),
+    })
+}
+
+function updateProjectUnifiedAssetCaches(
+    queryClient: ReturnType<typeof useQueryClient>,
+    projectId: string,
+    updater: (previous: AssetSummary[] | undefined) => AssetSummary[] | undefined,
+) {
+    queryClient.setQueriesData<AssetSummary[] | undefined>(
+        { queryKey: queryKeys.assets.all('project', projectId) },
+        updater,
+    )
+}
+
+function restoreProjectUnifiedAssetSnapshots(
+    queryClient: ReturnType<typeof useQueryClient>,
+    snapshots: Array<[QueryKey, AssetSummary[] | undefined]>,
+) {
+    snapshots.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data)
+    })
+}
+
 export function useDeleteProjectLocation(projectId: string) {
     const queryClient = useQueryClient()
     const invalidateProjectAssets = () =>
@@ -63,16 +102,22 @@ export function useDeleteProjectLocation(projectId: string) {
         },
         onMutate: async (locationId): Promise<DeleteProjectLocationContext> => {
             const assetsQueryKey = queryKeys.projectAssets.all(projectId)
+            const unifiedAssetsQueryKey = queryKeys.assets.all('project', projectId)
             const projectQueryKey = queryKeys.projectData(projectId)
 
             await queryClient.cancelQueries({ queryKey: assetsQueryKey })
+            await queryClient.cancelQueries({ queryKey: unifiedAssetsQueryKey })
             await queryClient.cancelQueries({ queryKey: projectQueryKey })
 
             const previousAssets = queryClient.getQueryData<ProjectAssetsData>(assetsQueryKey)
+            const previousUnifiedAssets = getProjectUnifiedAssetSnapshots(queryClient, projectId)
             const previousProject = queryClient.getQueryData<Project>(projectQueryKey)
 
             queryClient.setQueryData<ProjectAssetsData | undefined>(assetsQueryKey, (previous) =>
                 removeLocationFromAssets(previous, locationId),
+            )
+            updateProjectUnifiedAssetCaches(queryClient, projectId, (previous) =>
+                removeLocationFromUnifiedAssets(previous, locationId),
             )
             queryClient.setQueryData<Project | undefined>(projectQueryKey, (previous) =>
                 removeLocationFromProject(previous, locationId),
@@ -80,12 +125,14 @@ export function useDeleteProjectLocation(projectId: string) {
 
             return {
                 previousAssets,
+                previousUnifiedAssets,
                 previousProject,
             }
         },
         onError: (_error, _locationId, context) => {
             if (!context) return
             queryClient.setQueryData(queryKeys.projectAssets.all(projectId), context.previousAssets)
+            restoreProjectUnifiedAssetSnapshots(queryClient, context.previousUnifiedAssets)
             queryClient.setQueryData(queryKeys.projectData(projectId), context.previousProject)
         },
         onSettled: invalidateProjectAssets,

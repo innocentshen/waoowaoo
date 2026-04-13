@@ -111,6 +111,8 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/panel-variant/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel/select-candidate/route.ts',
+  'src/app/api/novel-promotion/[projectId]/panel/select-source-image/route.ts',
+  'src/app/api/novel-promotion/[projectId]/panel/video-candidate/route.ts',
   'src/app/api/novel-promotion/[projectId]/photography-plan/route.ts',
   'src/app/api/novel-promotion/[projectId]/reference-to-character/route.ts',
   'src/app/api/novel-promotion/[projectId]/regenerate-group/route.ts',
@@ -167,6 +169,10 @@ const ROUTE_FILES = [
   'src/app/api/user/costs/route.ts',
   'src/app/api/user/ai-story-expand/route.ts',
   'src/app/api/user/models/route.ts',
+  'src/app/api/user/prompt-center/[promptKey]/activate/route.ts',
+  'src/app/api/user/prompt-center/[promptKey]/reset/route.ts',
+  'src/app/api/user/prompt-center/[promptKey]/route.ts',
+  'src/app/api/user/prompt-center/route.ts',
   'src/app/api/user/transactions/route.ts',
 ] as const
 

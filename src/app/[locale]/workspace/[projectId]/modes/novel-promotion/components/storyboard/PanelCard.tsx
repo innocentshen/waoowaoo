@@ -1,5 +1,7 @@
 'use client'
 
+import React from 'react'
+import { memo } from 'react'
 import { useTranslations } from 'next-intl'
 import PanelEditForm, { PanelEditData } from '../PanelEditForm'
 import ImageSection from './ImageSection'
@@ -24,11 +26,12 @@ interface PanelCardProps {
   hasUnsavedChanges?: boolean
   saveErrorMessage?: string | null
   isDeleting: boolean
+  isUploadingImage: boolean
   isModifying: boolean
   isSubmittingPanelImageTask: boolean
   failedError: string | null
   candidateData: PanelCandidateData | null
-  previousImageUrl?: string | null  // 支持撤回
+  previousImageUrl?: string | null
   onUpdate: (updates: Partial<PanelEditData>) => void
   onDelete: () => void
   onOpenCharacterPicker: () => void
@@ -37,20 +40,53 @@ interface PanelCardProps {
   onRemoveCharacter: (index: number) => void
   onRemoveLocation: () => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onUploadImage: (panelId: string, file: File) => Promise<void>
+  onOpenSourcePanelPicker: () => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onSelectCandidateIndex: (panelId: string, index: number) => void
   onConfirmCandidate: (panelId: string, imageUrl: string) => Promise<void>
   onCancelCandidate: (panelId: string) => void
   onClearError: () => void
-  onUndo?: (panelId: string) => void  // 撤回到上一版本
-  onPreviewImage?: (url: string) => void  // 放大预览图片
-  onInsertAfter?: () => void  // 在此镜头后插入
-  onVariant?: () => void  // 生成镜头变体
-  isInsertDisabled?: boolean  // 插入按钮是否禁用
+  onUndo?: (panelId: string) => void
+  onPreviewImage?: (url: string) => void
+  onInsertAfter?: () => void
+  onVariant?: () => void
+  isInsertDisabled?: boolean
 }
 
-export default function PanelCard({
+function areCandidateDataEqual(previous: PanelCandidateData | null, next: PanelCandidateData | null) {
+  if (previous === next) return true
+  if (!previous || !next) return previous === next
+  if (previous.selectedIndex !== next.selectedIndex) return false
+  if (previous.candidates.length !== next.candidates.length) return false
+
+  return previous.candidates.every((candidate, index) => candidate === next.candidates[index])
+}
+
+function arePanelCardPropsEqual(previous: PanelCardProps, next: PanelCardProps) {
+  return (
+    previous.panel === next.panel &&
+    previous.panelData === next.panelData &&
+    previous.imageUrl === next.imageUrl &&
+    previous.globalPanelNumber === next.globalPanelNumber &&
+    previous.storyboardId === next.storyboardId &&
+    previous.videoRatio === next.videoRatio &&
+    previous.isSaving === next.isSaving &&
+    previous.hasUnsavedChanges === next.hasUnsavedChanges &&
+    previous.saveErrorMessage === next.saveErrorMessage &&
+    previous.isDeleting === next.isDeleting &&
+    previous.isUploadingImage === next.isUploadingImage &&
+    previous.isModifying === next.isModifying &&
+    previous.isSubmittingPanelImageTask === next.isSubmittingPanelImageTask &&
+    previous.failedError === next.failedError &&
+    areCandidateDataEqual(previous.candidateData, next.candidateData) &&
+    previous.previousImageUrl === next.previousImageUrl &&
+    previous.isInsertDisabled === next.isInsertDisabled
+  )
+}
+
+function PanelCard({
   panel,
   panelData,
   imageUrl,
@@ -61,6 +97,7 @@ export default function PanelCard({
   hasUnsavedChanges = false,
   saveErrorMessage = null,
   isDeleting,
+  isUploadingImage,
   isModifying,
   isSubmittingPanelImageTask,
   failedError,
@@ -74,6 +111,8 @@ export default function PanelCard({
   onRemoveCharacter,
   onRemoveLocation,
   onRegeneratePanelImage,
+  onUploadImage,
+  onOpenSourcePanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   onSelectCandidateIndex,
@@ -84,9 +123,10 @@ export default function PanelCard({
   onPreviewImage,
   onInsertAfter,
   onVariant,
-  isInsertDisabled
+  isInsertDisabled,
 }: PanelCardProps) {
   const t = useTranslations('storyboard')
+
   return (
     <GlassSurface
       variant="elevated"
@@ -94,7 +134,6 @@ export default function PanelCard({
       className="relative h-full overflow-visible transition-all hover:shadow-[var(--glass-shadow-md)] group/card"
       data-storyboard-id={storyboardId}
     >
-      {/* 删除按钮 - 右上角外部 */}
       {!isModifying && !isDeleting && (
         <button
           onClick={onDelete}
@@ -105,8 +144,7 @@ export default function PanelCard({
         </button>
       )}
 
-      {/* 镜头图片区域 - 包含插入按钮 */}
-      <div className="relative">
+      <div className="relative group/panel-image">
         <ImageSection
           panelId={panel.id}
           imageUrl={imageUrl}
@@ -114,12 +152,15 @@ export default function PanelCard({
           shotType={panel.shot_type}
           videoRatio={videoRatio}
           isDeleting={isDeleting}
+          isUploadingImage={isUploadingImage}
           isModifying={isModifying}
           isSubmittingPanelImageTask={isSubmittingPanelImageTask}
           failedError={failedError}
           candidateData={candidateData}
           previousImageUrl={previousImageUrl}
           onRegeneratePanelImage={onRegeneratePanelImage}
+          onUploadImage={onUploadImage}
+          onOpenSourcePanelPicker={onOpenSourcePanelPicker}
           onOpenEditModal={onOpenEditModal}
           onOpenAIDataModal={onOpenAIDataModal}
           onSelectCandidateIndex={onSelectCandidateIndex}
@@ -129,12 +170,12 @@ export default function PanelCard({
           onUndo={onUndo}
           onPreviewImage={onPreviewImage}
         />
-        {/* 插入分镜/镜头变体按钮 - 在图片区域右侧垂直居中 */}
+
         {(onInsertAfter || onVariant) && (
-          <div className="absolute -right-[22px] top-1/2 -translate-y-1/2 z-50">
+          <div className="pointer-events-none absolute right-2 top-1/2 z-30 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover/panel-image:pointer-events-auto group-hover/panel-image:opacity-100 group-focus-within/panel-image:pointer-events-auto group-focus-within/panel-image:opacity-100">
             <PanelActionButtons
-              onInsertPanel={onInsertAfter || (() => { })}
-              onVariant={onVariant || (() => { })}
+              onInsertPanel={onInsertAfter || (() => {})}
+              onVariant={onVariant || (() => {})}
               disabled={isInsertDisabled}
               hasImage={!!imageUrl}
             />
@@ -142,7 +183,6 @@ export default function PanelCard({
         )}
       </div>
 
-      {/* 分镜信息编辑区 */}
       <div className="p-3">
         <PanelEditForm
           panelData={panelData}
@@ -160,3 +200,5 @@ export default function PanelCard({
     </GlassSurface>
   )
 }
+
+export default memo(PanelCard, arePanelCardPropsEqual)

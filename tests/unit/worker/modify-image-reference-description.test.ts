@@ -5,8 +5,8 @@ import { TASK_TYPE, type TaskJobData, type TaskType } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => {}),
-  getProjectModels: vi.fn(async () => ({ editModel: 'edit-model' })),
-  getUserModels: vi.fn(async () => ({ editModel: 'edit-model', analysisModel: 'analysis-model' })),
+  getProjectModels: vi.fn(async () => ({ editModel: 'fal::edit-model' })),
+  getUserModels: vi.fn(async () => ({ editModel: 'fal::edit-model', analysisModel: 'analysis-model' })),
   resolveImageSourceFromGeneration: vi.fn(async () => 'generated-image-source'),
   stripLabelBar: vi.fn(async () => 'required-reference-image'),
   toSignedUrlIfCos: vi.fn(() => 'https://signed/current-image.png'),
@@ -16,6 +16,7 @@ const utilsMock = vi.hoisted(() => ({
 
 const outboundImageMock = vi.hoisted(() => ({
   normalizeReferenceImagesForGeneration: vi.fn(async (input?: string[]) => input?.map((item) => item.trim()) || []),
+  normalizeReferenceImagesForOriginalMedia: vi.fn(async (input?: string[]) => input?.map((item) => `${item.trim()}?signed=1`) || []),
   normalizeToBase64ForGeneration: vi.fn(async () => 'base64-reference'),
 }))
 
@@ -109,6 +110,8 @@ function getUpdateData(callArg: unknown): Record<string, unknown> {
 describe('modify image syncs descriptions after edit', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    utilsMock.getProjectModels.mockResolvedValue({ editModel: 'fal::edit-model' })
+    utilsMock.getUserModels.mockResolvedValue({ editModel: 'fal::edit-model', analysisModel: 'analysis-model' })
 
     prismaMock.characterAppearance.findUnique.mockResolvedValue({
       id: 'appearance-1',
@@ -328,6 +331,40 @@ describe('modify image syncs descriptions after edit', () => {
       expect.objectContaining({
         options: expect.objectContaining({
           aspectRatio: PROP_IMAGE_RATIO,
+        }),
+      }),
+    )
+  })
+
+  it('keeps grok asset-hub edits on original-media references', async () => {
+    utilsMock.getUserModels.mockResolvedValueOnce({
+      editModel: 'grok::grok-imagine-image',
+      analysisModel: 'analysis-model',
+    })
+
+    await handleAssetHubModifyTask(buildJob(TASK_TYPE.ASSET_HUB_MODIFY, {
+      type: 'character',
+      id: 'global-character-1',
+      appearanceIndex: 0,
+      imageIndex: 1,
+      modifyPrompt: 'merge both references into the outfit update',
+      extraImageUrls: ['https://ref.example/b.png', 'https://ref.example/c.png'],
+    }))
+
+    expect(outboundImageMock.normalizeReferenceImagesForOriginalMedia).toHaveBeenCalledWith([
+      'https://ref.example/b.png',
+      'https://ref.example/c.png',
+    ])
+    expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        modelId: 'grok::grok-imagine-image',
+        options: expect.objectContaining({
+          referenceImages: [
+            'https://signed/current-image.png',
+            'https://ref.example/b.png?signed=1',
+            'https://ref.example/c.png?signed=1',
+          ],
         }),
       }),
     )

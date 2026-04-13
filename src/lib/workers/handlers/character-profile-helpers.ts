@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { safeParseJsonObject } from '@/lib/json-repair'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 export type AnyObj = Record<string, unknown>
 
@@ -20,20 +21,19 @@ export function parseVisualResponse(responseText: string): AnyObj {
 }
 
 export async function resolveProjectModel(projectId: string) {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
+  const project = await findProjectBaseById(projectId)
+  const novelPromotionData = await prisma.novelPromotionProject.findUnique({
+    where: { projectId },
     select: {
       id: true,
-      novelPromotionData: {
-        select: {
-          id: true,
-          analysisModel: true,
-        },
-      },
+      analysisModel: true,
     },
   })
   if (!project) throw new Error('Project not found')
-  if (!project.novelPromotionData) throw new Error('Novel promotion data not found')
-  if (!project.novelPromotionData.analysisModel) throw new Error('请先在项目设置中配置分析模型')
-  return project
+  if (!novelPromotionData) throw new Error('Novel promotion data not found')
+  if (!novelPromotionData.analysisModel) throw new Error('璇峰厛鍦ㄩ」鐩缃腑閰嶇疆鍒嗘瀽妯″瀷')
+  return {
+    id: project.id,
+    novelPromotionData,
+  }
 }

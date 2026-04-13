@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { useTranslations } from 'next-intl'
 import { NovelPromotionClip, NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
 import StoryboardGroup from './StoryboardGroup'
@@ -14,6 +15,8 @@ interface StoryboardCanvasProps {
   sortedStoryboards: NovelPromotionStoryboard[]
   videoRatio: string
   expandedClips: Set<string>
+  panelEdits: Record<string, PanelEditData>
+  panelCandidateIndex: Map<string, unknown>
   submittingStoryboardIds: Set<string>
   selectingCandidateIds: Set<string>
   submittingStoryboardTextIds: Set<string>
@@ -21,6 +24,7 @@ interface StoryboardCanvasProps {
   deletingPanelIds: Set<string>
   saveStateByPanel: Record<string, PanelSaveState>
   hasUnsavedByPanel: Set<string>
+  uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   submittingPanelImageIds: Set<string>
   movingClipId: string | null
@@ -53,6 +57,8 @@ interface StoryboardCanvasProps {
   onRemoveLocation: (panel: StoryboardPanel, storyboardId: string) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onUploadPanelImage: (panelId: string, file: File) => Promise<void>
+  onOpenSourcePanelPicker: (panelId: string) => void
   onOpenEditModal: (storyboardId: string, panelIndex: number) => void
   onOpenAIDataModal: (storyboardId: string, panelIndex: number) => void
   getPanelCandidates: (panel: NovelPromotionPanel) => { candidates: string[]; selectedIndex: number } | null
@@ -72,10 +78,43 @@ interface StoryboardCanvasProps {
   setLocalStoryboards: React.Dispatch<React.SetStateAction<NovelPromotionStoryboard[]>>
 }
 
-export default function StoryboardCanvas({
+function areStoryboardCanvasPropsEqual(previous: StoryboardCanvasProps, next: StoryboardCanvasProps) {
+  return (
+    previous.sortedStoryboards === next.sortedStoryboards &&
+    previous.videoRatio === next.videoRatio &&
+    previous.expandedClips === next.expandedClips &&
+    previous.panelEdits === next.panelEdits &&
+    previous.panelCandidateIndex === next.panelCandidateIndex &&
+    previous.submittingStoryboardIds === next.submittingStoryboardIds &&
+    previous.selectingCandidateIds === next.selectingCandidateIds &&
+    previous.submittingStoryboardTextIds === next.submittingStoryboardTextIds &&
+    previous.savingPanels === next.savingPanels &&
+    previous.deletingPanelIds === next.deletingPanelIds &&
+    previous.saveStateByPanel === next.saveStateByPanel &&
+    previous.hasUnsavedByPanel === next.hasUnsavedByPanel &&
+    previous.uploadingPanels === next.uploadingPanels &&
+    previous.modifyingPanels === next.modifyingPanels &&
+    previous.submittingPanelImageIds === next.submittingPanelImageIds &&
+    previous.movingClipId === next.movingClipId &&
+    previous.insertingAfterPanelId === next.insertingAfterPanelId &&
+    previous.submittingVariantPanelId === next.submittingVariantPanelId &&
+    previous.projectId === next.projectId &&
+    previous.episodeId === next.episodeId &&
+    previous.storyboardStartIndex === next.storyboardStartIndex &&
+    previous.getClipInfo === next.getClipInfo &&
+    previous.getTextPanels === next.getTextPanels &&
+    previous.formatClipTitle === next.formatClipTitle &&
+    previous.addingStoryboardGroup === next.addingStoryboardGroup &&
+    previous.setLocalStoryboards === next.setLocalStoryboards
+  )
+}
+
+function StoryboardCanvas({
   sortedStoryboards,
   videoRatio,
   expandedClips,
+  panelEdits,
+  panelCandidateIndex,
   submittingStoryboardIds,
   selectingCandidateIds,
   submittingStoryboardTextIds,
@@ -83,6 +122,7 @@ export default function StoryboardCanvas({
   deletingPanelIds,
   saveStateByPanel,
   hasUnsavedByPanel,
+  uploadingPanels,
   modifyingPanels,
   submittingPanelImageIds,
   movingClipId,
@@ -111,6 +151,8 @@ export default function StoryboardCanvas({
   onRemoveLocation,
   onRetryPanelSave,
   onRegeneratePanelImage,
+  onUploadPanelImage,
+  onOpenSourcePanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   getPanelCandidates,
@@ -155,6 +197,8 @@ export default function StoryboardCanvas({
               storyboardStartIndex={storyboardStartIndex[storyboard.id]}
               videoRatio={videoRatio}
               isExpanded={expandedClips.has(storyboard.id)}
+              panelEdits={panelEdits}
+              panelCandidateIndex={panelCandidateIndex}
               isSubmittingStoryboardTask={isSubmittingStoryboardTask}
               isSelectingCandidate={isSelectingCandidate}
               isSubmittingStoryboardTextTask={isSubmittingStoryboardTextTask}
@@ -164,6 +208,7 @@ export default function StoryboardCanvas({
               deletingPanelIds={deletingPanelIds}
               saveStateByPanel={saveStateByPanel}
               hasUnsavedByPanel={hasUnsavedByPanel}
+              uploadingPanels={uploadingPanels}
               modifyingPanels={modifyingPanels}
               submittingPanelImageIds={submittingPanelImageIds}
               onToggleExpand={() => onToggleExpandedClip(storyboard.id)}
@@ -184,6 +229,8 @@ export default function StoryboardCanvas({
               onRemoveLocation={(panel) => onRemoveLocation(panel, storyboard.id)}
               onRetryPanelSave={onRetryPanelSave}
               onRegeneratePanelImage={onRegeneratePanelImage}
+              onUploadPanelImage={onUploadPanelImage}
+              onOpenSourcePanelPicker={onOpenSourcePanelPicker}
               onOpenEditModal={(panelIndex) => onOpenEditModal(storyboard.id, panelIndex)}
               onOpenAIDataModal={(panelIndex) => onOpenAIDataModal(storyboard.id, panelIndex)}
               getPanelCandidates={getPanelCandidates}
@@ -218,3 +265,5 @@ export default function StoryboardCanvas({
     </>
   )
 }
+
+export default memo(StoryboardCanvas, areStoryboardCanvasPropsEqual)

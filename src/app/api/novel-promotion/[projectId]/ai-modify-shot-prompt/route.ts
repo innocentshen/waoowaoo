@@ -14,13 +14,24 @@ export const POST = apiHandler(async (
   const { session } = authResult
 
   const body = await request.json().catch(() => ({}))
+  const mode = typeof body?.mode === 'string' ? body.mode.trim() : ''
   const currentPrompt = typeof body?.currentPrompt === 'string' ? body.currentPrompt.trim() : ''
   const modifyInstruction = typeof body?.modifyInstruction === 'string' ? body.modifyInstruction.trim() : ''
-  if (!currentPrompt || !modifyInstruction) {
-    throw new ApiError('INVALID_PARAMS')
-  }
   const panelId = typeof body?.panelId === 'string' ? body.panelId.trim() : ''
   const episodeId = typeof body?.episodeId === 'string' ? body.episodeId.trim() : ''
+
+  const isVideoPromptMode = mode === 'videoPrompt'
+  if (!modifyInstruction) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+  if (isVideoPromptMode) {
+    if (!panelId) {
+      throw new ApiError('INVALID_PARAMS')
+    }
+  } else if (!currentPrompt) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+  const dedupePrefix = isVideoPromptMode ? 'ai_generate_video_prompt' : 'ai_modify_shot_prompt'
 
   const asyncTaskResponse = await maybeSubmitLLMTask({
     request,
@@ -32,7 +43,7 @@ export const POST = apiHandler(async (
     targetId: panelId || projectId,
     routePath: `/api/novel-promotion/${projectId}/ai-modify-shot-prompt`,
     body,
-    dedupeKey: panelId ? `ai_modify_shot_prompt:${panelId}` : `ai_modify_shot_prompt:${projectId}`})
+    dedupeKey: panelId ? `${dedupePrefix}:${panelId}` : `${dedupePrefix}:${projectId}`})
   if (asyncTaskResponse) return asyncTaskResponse
 
   throw new ApiError('INVALID_PARAMS')

@@ -1,5 +1,6 @@
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
-import { buildReasoningAwareContent } from '@/lib/llm/utils'
+import { buildReasoningAwareContent, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
+import { isLikelyOpenAIReasoningModel } from '@/lib/llm/reasoning-capability'
 import type { OpenAICompatChatRequest } from '../types'
 import { resolveOpenAICompatClientConfig } from './common'
 
@@ -97,20 +98,28 @@ function extractResponsesUsage(payload: unknown): ResponsesUsage {
 export async function runOpenAICompatResponsesCompletion(input: OpenAICompatChatRequest) {
   const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
   const endpoint = toEndpoint(config.baseUrl, '/responses')
+  const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
+  const body: Record<string, unknown> = {
+    model: input.modelId,
+    input: input.messages.map((message) => ({
+      role: message.role,
+      content: [{ type: 'input_text', text: message.content }],
+    })),
+  }
+  if (useReasoningControls) {
+    body.reasoning = {
+      effort: mapOpenAICompatReasoningEffort(input.reasoningEffort),
+    }
+  } else {
+    body.temperature = input.temperature
+  }
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify({
-      model: input.modelId,
-      input: input.messages.map((message) => ({
-        role: message.role,
-        content: [{ type: 'input_text', text: message.content }],
-      })),
-      temperature: input.temperature,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {

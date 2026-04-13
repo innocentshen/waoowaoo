@@ -32,5 +32,16 @@
     "cancel": "取消",
     "delete": "删除",
     "boolOn": "开",
-    "boolOff": "关"
+    "boolOff": "关",
+    "capabilityOption": {
+        "none": "无",
+        "1K": "1K",
+        "2K": "2K",
+        "4K": "4K",
+        "minimal": "极低",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "xhigh": "超高"
+    }
 }

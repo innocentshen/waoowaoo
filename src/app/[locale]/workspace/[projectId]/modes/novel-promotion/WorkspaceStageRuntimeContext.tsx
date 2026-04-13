@@ -3,7 +3,12 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
-import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
+import type {
+  BatchVideoGenerationParams,
+  VideoGenerationOptions,
+  VideoOperationRequest,
+  VideoReferenceSelection,
+} from './components/video'
 
 export interface WorkspaceStageVideoModelOption {
   value: string
@@ -27,6 +32,7 @@ export interface WorkspaceStageRuntimeValue {
   capabilityOverrides: CapabilitySelections
   userVideoModels: WorkspaceStageVideoModelOption[]
   onNovelTextChange: (value: string) => Promise<void>
+  onUpdateProjectConfig: (key: string, value: unknown) => Promise<void>
   onVideoRatioChange: (value: string) => Promise<void>
   onArtStyleChange: (value: string) => Promise<void>
   onRunStoryToScript: () => Promise<void>
@@ -45,7 +51,10 @@ export interface WorkspaceStageRuntimeValue {
       customPrompt?: string
     },
     generationOptions?: VideoGenerationOptions,
+    videoOperation?: VideoOperationRequest,
+    referenceSelection?: VideoReferenceSelection,
     panelId?: string,
+    count?: number,
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onUpdateVideoPrompt: (

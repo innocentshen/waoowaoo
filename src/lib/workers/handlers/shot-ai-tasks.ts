@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import {
+  handleGeneratePanelVideoPromptTask,
   handleModifyAppearanceTask,
   handleModifyLocationTask,
   handleModifyPropTask,
@@ -19,6 +20,9 @@ export async function handleShotAITask(job: Job<TaskJobData>) {
     case TASK_TYPE.AI_MODIFY_PROP:
       return await handleModifyPropTask(job, payload)
     case TASK_TYPE.AI_MODIFY_SHOT_PROMPT:
+      if (payload.mode === 'videoPrompt') {
+        return await handleGeneratePanelVideoPromptTask(job, payload)
+      }
       return await handleModifyShotPromptTask(job, payload)
     case TASK_TYPE.ANALYZE_SHOT_VARIANTS:
       return await handleAnalyzeShotVariantsTask(job, payload)

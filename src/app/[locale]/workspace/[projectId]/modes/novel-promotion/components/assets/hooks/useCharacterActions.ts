@@ -13,7 +13,6 @@ import { useCallback } from 'react'
 import { CharacterAppearance } from '@/types/project'
 import { isAbortError } from '@/lib/error-utils'
 import {
-    useProjectAssets,
     useRefreshProjectAssets,
     useRegenerateSingleCharacterImage,
     useRegenerateCharacterGroup,
@@ -24,6 +23,7 @@ import {
     useUpdateProjectAppearanceDescription,
     type Character
 } from '@/lib/query/hooks'
+import { useAssetStageProjectAssets } from '../AssetStageProjectAssetsContext'
 
 interface UseCharacterActionsProps {
     projectId: string
@@ -45,8 +45,8 @@ export function useCharacterActions({
 }: UseCharacterActionsProps) {
     const t = useTranslations('assets')
     // 🔥 直接订阅缓存 - 消除 props drilling
-    const { data: assets } = useProjectAssets(projectId)
-    const characters = assets?.characters ?? []
+    const assets = useAssetStageProjectAssets(projectId)
+    const characters = assets.characters
 
     // 🔥 使用刷新函数 - mutations 完成后刷新缓存
     const refreshAssets = useRefreshProjectAssets(projectId)

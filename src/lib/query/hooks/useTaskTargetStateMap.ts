@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
 import type { TaskIntent } from '@/lib/task/intent'
@@ -102,6 +102,32 @@ function buildIdleState(target: TaskTargetStateQuery): TaskTargetState {
     lastError: null,
     updatedAt: null,
   }
+}
+
+function areTaskErrorsEqual(
+  previous: TaskTargetState['lastError'],
+  next: TaskTargetState['lastError'],
+): boolean {
+  if (previous === next) return true
+  if (!previous || !next) return previous === next
+  return previous.code === next.code && previous.message === next.message
+}
+
+function areTaskTargetStatesEqual(previous: TaskTargetState, next: TaskTargetState): boolean {
+  return (
+    previous.targetType === next.targetType &&
+    previous.targetId === next.targetId &&
+    previous.phase === next.phase &&
+    previous.runningTaskId === next.runningTaskId &&
+    previous.runningTaskType === next.runningTaskType &&
+    previous.intent === next.intent &&
+    previous.hasOutputAtStart === next.hasOutputAtStart &&
+    previous.progress === next.progress &&
+    previous.stage === next.stage &&
+    previous.stageLabel === next.stageLabel &&
+    areTaskErrorsEqual(previous.lastError, next.lastError) &&
+    previous.updatedAt === next.updatedAt
+  )
 }
 
 function matchesTaskTypeWhitelist(
@@ -279,6 +305,8 @@ export function useTaskTargetStateMap(
     staleTime?: number
   } = {},
 ) {
+  const previousMergedByKeyRef = useRef<Map<string, TaskTargetState>>(new Map())
+  const previousMergedDataRef = useRef<TaskTargetState[]>([])
   const normalizedTargets = useMemo(() => normalizeTargets(targets), [targets])
   const serializedTargets = useMemo(
     () => JSON.stringify(normalizedTargets),
@@ -409,32 +437,51 @@ export function useTaskTargetStateMap(
         })
       }
     }
-    return map
-  }, [normalizedTargets, overlayQuery.data, query.data])
+    const nextByKey = new Map<string, TaskTargetState>()
+    const previousByKey = previousMergedByKeyRef.current
+
+    for (const target of normalizedTargets) {
+      const key = stateKey(target.targetType, target.targetId)
+      const nextState = map.get(key) || buildIdleState(target)
+      const previousState = previousByKey.get(key)
+      nextByKey.set(
+        key,
+        previousState && areTaskTargetStatesEqual(previousState, nextState)
+          ? previousState
+          : nextState,
+      )
+    }
+
+    previousMergedByKeyRef.current = nextByKey
+    return nextByKey
+  }, [normalizedTargets, overlayQuery.data, projectId, query.data])
 
   const mergedData = useMemo(() => {
-    return normalizedTargets.map((target) =>
+    const nextData = normalizedTargets.map((target) =>
       mergedByKey.get(stateKey(target.targetType, target.targetId)) || buildIdleState(target),
     )
-  }, [mergedByKey, normalizedTargets])
 
-  const byKey = useMemo(() => {
-    const map = new Map<string, TaskTargetState>()
-    for (const state of mergedData) {
-      map.set(stateKey(state.targetType, state.targetId), state)
+    const previousData = previousMergedDataRef.current
+    if (
+      previousData.length === nextData.length
+      && previousData.every((state, index) => state === nextData[index])
+    ) {
+      return previousData
     }
-    return map
-  }, [mergedData])
+
+    previousMergedDataRef.current = nextData
+    return nextData
+  }, [mergedByKey, normalizedTargets])
 
   const getState = useMemo(() => {
     return (targetType: string, targetId: string) =>
-      byKey.get(stateKey(targetType, targetId)) || null
-  }, [byKey])
+      mergedByKey.get(stateKey(targetType, targetId)) || null
+  }, [mergedByKey])
 
   return {
     ...query,
     data: mergedData,
-    byKey,
+    byKey: mergedByKey,
     getState,
   }
 }

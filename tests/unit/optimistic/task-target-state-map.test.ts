@@ -28,6 +28,7 @@ vi.mock('react', async () => {
   return {
     ...actual,
     useMemo: <T,>(factory: () => T) => factory(),
+    useRef: <T,>(initial: T) => ({ current: initial }),
   }
 })
 

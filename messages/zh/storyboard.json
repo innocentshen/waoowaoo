@@ -148,6 +148,15 @@
         "generateMultiple": "生成多张候选",
         "generateCount": "生成 {count} 张",
         "generateCountSuffix": "张",
+        "upload": "上传",
+        "uploadReplace": "上传替换",
+        "chooseShot": "选镜头",
+        "chooseShotTitle": "选择其他分镜画面",
+        "chooseShotDescription": "从其他已有分镜里选一张画面，替换当前镜头。",
+        "useThisShot": "用作当前画面",
+        "noOtherShots": "暂无其他可用画面",
+        "chooseShotFailedError": "选择分镜画面失败: {error}",
+        "uploadFailedError": "上传失败: {error}",
         "undoShort": "返回"
     },
     "candidate": {

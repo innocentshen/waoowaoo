@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Worker, type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { queueRedis } from '@/lib/redis'
@@ -18,16 +19,280 @@ import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
+import {
+  appendPanelVideoCandidate,
+  estimatePanelVideoCandidateDurationSeconds,
+  resolvePanelVideoCandidates,
+  type PanelVideoCandidateMeta,
+  type PanelVideoGenerationMode,
+} from '@/lib/novel-promotion/video-candidates'
+import { GROK_VIDEO_EDIT_MAX_SOURCE_DURATION_SECONDS } from '@/lib/providers/grok/shared'
+import {
+  findCharacterByName,
+  parseNamedReferenceList,
+  parseImageUrls,
+  parsePanelCharacterReferences,
+  resolveNovelData,
+} from './handlers/image-task-handler-shared'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
 type VideoOptionMap = Record<string, VideoOptionValue>
-type VideoGenerationMode = 'normal' | 'firstlastframe'
+type VideoGenerationMode = PanelVideoGenerationMode
 type PanelRecord = NonNullable<Awaited<ReturnType<typeof prisma.novelPromotionPanel.findUnique>>>
+type VideoReferenceSelection = {
+  includeCharacters: boolean
+  includeLocation: boolean
+  includeProps: boolean
+  characters: Array<{ name: string; appearance?: string }>
+  locations: string[]
+  props: string[]
+}
+
+function isOfficialGrokVideoModel(modelKey: string): boolean {
+  const parsed = parseModelKeyStrict(modelKey)
+  return parsed?.provider === 'grok'
+}
 
 function toDurationMs(value: number | null | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
   return value > 1000 ? Math.round(value) : Math.round(value * 1000)
+}
+
+function formatDurationSeconds(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function readVideoReferenceSelection(payload: AnyObj): VideoReferenceSelection {
+  const raw = payload.referenceSelection
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      includeCharacters: false,
+      includeLocation: false,
+      includeProps: false,
+      characters: [],
+      locations: [],
+      props: [],
+    }
+  }
+
+  const selection = raw as Record<string, unknown>
+  const normalizeUniqueTextList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return []
+    const normalized: string[] = []
+    const seen = new Set<string>()
+    for (const item of value) {
+      if (typeof item !== 'string') continue
+      const trimmed = item.trim()
+      if (!trimmed) continue
+      const key = trimmed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      normalized.push(trimmed)
+    }
+    return normalized
+  }
+  const characters = (() => {
+    if (!Array.isArray(selection.characters)) return []
+    const normalized: Array<{ name: string; appearance?: string }> = []
+    const seen = new Set<string>()
+    for (const item of selection.characters) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const name = typeof item.name === 'string' ? item.name.trim() : ''
+      if (!name) continue
+      const appearance = typeof item.appearance === 'string' ? item.appearance.trim() : ''
+      const key = `${name.toLowerCase()}::${appearance.toLowerCase()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      normalized.push(appearance ? { name, appearance } : { name })
+    }
+    return normalized
+  })()
+  const locations = normalizeUniqueTextList(selection.locations)
+  const props = normalizeUniqueTextList(selection.props)
+
+  return {
+    includeCharacters: selection.includeCharacters === true || characters.length > 0,
+    includeLocation: selection.includeLocation === true || locations.length > 0,
+    includeProps: selection.includeProps === true || props.length > 0,
+    characters,
+    locations,
+    props,
+  }
+}
+
+function parseDescriptionList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  } catch {
+    return []
+  }
+}
+
+function pickAppearanceDescription(appearance: {
+  descriptions?: string | null
+  description?: string | null
+  selectedIndex?: number | null
+} | null | undefined): string | null {
+  if (!appearance) return null
+  const descriptions = parseDescriptionList(appearance.descriptions || null)
+  if (descriptions.length > 0) {
+    const selectedIndex = typeof appearance.selectedIndex === 'number' ? appearance.selectedIndex : 0
+    const selected = descriptions[selectedIndex] || descriptions[0]
+    if (selected && selected.trim()) return selected.trim()
+  }
+  if (typeof appearance.description === 'string' && appearance.description.trim()) {
+    return appearance.description.trim()
+  }
+  return null
+}
+
+async function normalizeVideoReferenceImages(inputs: string[]): Promise<string[]> {
+  const normalized: string[] = []
+  const seen = new Set<string>()
+
+  for (const input of inputs.slice(0, 6)) {
+    const trimmed = input.trim()
+    if (!trimmed) continue
+    try {
+      const normalizedImage = await normalizeToBase64ForGeneration(trimmed)
+      if (!normalizedImage || seen.has(normalizedImage)) continue
+      seen.add(normalizedImage)
+      normalized.push(normalizedImage)
+    } catch {
+      // best effort only
+    }
+  }
+
+  return normalized
+}
+
+async function collectPanelVideoReferenceContext(input: {
+  projectId: string
+  panel: PanelRecord
+  selection: VideoReferenceSelection
+}): Promise<{
+  promptSuffix: string
+  referenceImages: string[]
+}> {
+  if (!input.selection.includeCharacters && !input.selection.includeLocation && !input.selection.includeProps) {
+    return {
+      promptSuffix: '',
+      referenceImages: [],
+    }
+  }
+
+  const projectData = await resolveNovelData(input.projectId)
+  const promptSections: string[] = []
+  const rawReferenceImages: string[] = []
+  const rawReferenceImageSet = new Set<string>()
+
+  if (input.selection.includeCharacters) {
+    const characterLines: string[] = []
+    const panelCharacters = input.selection.characters.length > 0
+      ? input.selection.characters.map((item) => ({ ...item, slot: undefined }))
+      : parsePanelCharacterReferences(input.panel.characters)
+
+    for (const characterRef of panelCharacters) {
+      const character = findCharacterByName(projectData.characters || [], characterRef.name)
+      if (!character) continue
+
+      const appearances = character.appearances || []
+      const matchedAppearance = characterRef.appearance
+        ? appearances.find((appearance) => (appearance.changeReason || '').toLowerCase() === characterRef.appearance!.toLowerCase())
+        : null
+      const appearance = matchedAppearance || appearances[0] || null
+      const description = pickAppearanceDescription(appearance)
+      const slotText = typeof characterRef.slot === 'string' && characterRef.slot.trim()
+        ? ` | slot: ${characterRef.slot.trim()}`
+        : ''
+      characterLines.push(`- ${character.name}${description ? `: ${description}` : ''}${slotText}`)
+
+      if (!appearance) continue
+      const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
+      const selectedIndex = appearance.selectedIndex
+      const selectedUrl = selectedIndex !== null && selectedIndex !== undefined ? imageUrls[selectedIndex] : null
+      const key = selectedUrl || imageUrls[0] || appearance.imageUrl
+      const signedUrl = toSignedUrlIfCos(key, 3600)
+      if (signedUrl && !rawReferenceImageSet.has(signedUrl)) {
+        rawReferenceImageSet.add(signedUrl)
+        rawReferenceImages.push(signedUrl)
+      }
+    }
+
+    if (characterLines.length > 0) {
+      promptSections.push(`Character references:\n${characterLines.join('\n')}`)
+    }
+  }
+
+  if (input.selection.includeLocation) {
+    const locationLines: string[] = []
+    const locationNames = input.selection.locations.length > 0
+      ? input.selection.locations
+      : parseNamedReferenceList(input.panel.location)
+
+    for (const panelLocation of locationNames) {
+      const location = (projectData.locations || []).find(
+        (item) => item.name.toLowerCase().trim() === panelLocation.toLowerCase(),
+      )
+      const selectedImage = location?.images?.find((image) => image.isSelected) || location?.images?.[0]
+      const description = selectedImage?.description?.trim() || location?.summary?.trim() || ''
+      locationLines.push(`- ${location?.name || panelLocation}${description ? `: ${description}` : ''}`)
+
+      const signedUrl = toSignedUrlIfCos(selectedImage?.imageUrl, 3600)
+      if (signedUrl && !rawReferenceImageSet.has(signedUrl)) {
+        rawReferenceImageSet.add(signedUrl)
+        rawReferenceImages.push(signedUrl)
+      }
+    }
+
+    if (locationLines.length > 0) {
+      promptSections.push(`Location references:\n${locationLines.join('\n')}`)
+    }
+  }
+
+  if (input.selection.includeProps) {
+    const propLines: string[] = []
+    const propNames = input.selection.props.length > 0
+      ? input.selection.props
+      : parseNamedReferenceList(input.panel.props)
+
+    for (const propName of propNames) {
+      const prop = (projectData.props || []).find(
+        (item) => item.name.toLowerCase().trim() === propName.toLowerCase(),
+      )
+      const selectedImage = prop?.images?.find((image) => image.isSelected) || prop?.images?.[0]
+      const description = selectedImage?.description?.trim() || prop?.summary?.trim() || ''
+      propLines.push(`- ${prop?.name || propName}${description ? `: ${description}` : ''}`)
+
+      const signedUrl = toSignedUrlIfCos(selectedImage?.imageUrl, 3600)
+      if (signedUrl && !rawReferenceImageSet.has(signedUrl)) {
+        rawReferenceImageSet.add(signedUrl)
+        rawReferenceImages.push(signedUrl)
+      }
+    }
+
+    if (propLines.length > 0) {
+      promptSections.push(`Prop references:\n${propLines.join('\n')}`)
+    }
+  }
+
+  const referenceImages = await normalizeVideoReferenceImages(rawReferenceImages)
+  const promptSuffix = promptSections.length > 0
+    ? [
+      'Reference consistency constraints:',
+      ...promptSections,
+      'Use these selected references to keep identity and location continuity consistent with the current shot.',
+    ].join('\n\n')
+    : ''
+
+  return {
+    promptSuffix,
+    referenceImages,
+  }
 }
 
 function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
@@ -38,12 +303,52 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
 
   const next: VideoOptionMap = {}
   for (const [key, value] of Object.entries(fromEnvelope as Record<string, unknown>)) {
-    if (key === 'aspectRatio') continue
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       next[key] = value
     }
   }
   return next
+}
+
+function parseVideoOperation(payload: AnyObj): {
+  mode: Extract<VideoGenerationMode, 'edit' | 'extend'>
+  sourceCandidateId: string
+  instruction: string
+  extendDuration?: number
+} | null {
+  const raw = payload.videoOperation
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const operation = raw as Record<string, unknown>
+
+  const mode = operation.mode
+  if (mode !== 'edit' && mode !== 'extend') {
+    throw new Error('VIDEO_OPERATION_MODE_INVALID')
+  }
+
+  const sourceCandidateId = typeof operation.sourceCandidateId === 'string' ? operation.sourceCandidateId.trim() : ''
+  if (!sourceCandidateId) {
+    throw new Error('VIDEO_OPERATION_SOURCE_CANDIDATE_REQUIRED')
+  }
+
+  const instruction = typeof operation.instruction === 'string' ? operation.instruction.trim() : ''
+  if (!instruction) {
+    throw new Error('VIDEO_OPERATION_INSTRUCTION_REQUIRED')
+  }
+
+  const extendDuration = typeof operation.extendDuration === 'number' && Number.isFinite(operation.extendDuration)
+    ? Math.round(operation.extendDuration)
+    : undefined
+
+  if (mode === 'extend' && (typeof extendDuration !== 'number' || extendDuration <= 0)) {
+    throw new Error('VIDEO_OPERATION_EXTEND_DURATION_REQUIRED')
+  }
+
+  return {
+    mode,
+    sourceCandidateId,
+    instruction,
+    ...(typeof extendDuration === 'number' ? { extendDuration } : {}),
+  }
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -84,35 +389,115 @@ async function generateVideoForPanel(
   modelId: string,
   projectVideoRatio: string | null | undefined,
   generationOptions: VideoOptionMap,
-): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
-  if (!panel.imageUrl) {
-    throw new Error(`Panel ${panel.id} has no imageUrl`)
-  }
-
+): Promise<{
+  cosKey: string
+  generationMode: VideoGenerationMode
+  prompt: string
+  generationModel: string
+  candidateMeta?: PanelVideoCandidateMeta | null
+  actualVideoTokens?: number
+}> {
   const firstLastFramePayload =
     typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
       ? (payload.firstLastFrame as AnyObj)
       : null
+  const videoOperation = parseVideoOperation(payload)
   const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
   const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
   const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
-  const prompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
-  if (!prompt) {
+  const basePrompt = videoOperation?.instruction
+    || firstLastCustomPrompt
+    || persistedFirstLastPrompt
+    || customPrompt
+    || panel.videoPrompt
+    || panel.description
+  if (!basePrompt) {
     throw new Error(`Panel ${panel.id} has no video prompt`)
   }
+  const referenceSelection = readVideoReferenceSelection(payload)
+  const referenceContext = await collectPanelVideoReferenceContext({
+    projectId: job.data.projectId,
+    panel,
+    selection: referenceSelection,
+  })
+  const prompt = [
+    basePrompt,
+    referenceContext.promptSuffix,
+  ].filter(Boolean).join('\n\n')
 
-  const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
-  if (!sourceImageUrl) {
-    throw new Error(`Panel ${panel.id} image url invalid`)
-  }
-  const sourceImageBase64 = await normalizeToBase64ForGeneration(sourceImageUrl)
-
+  let sourceImageBase64: string | undefined
+  let sourceVideoUrl: string | undefined
   let lastFrameImageBase64: string | undefined
-  const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
+  let referenceImagesForGeneration = referenceContext.referenceImages
+  const generationMode: VideoGenerationMode = videoOperation?.mode || (firstLastFramePayload ? 'firstlastframe' : 'normal')
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
   let model = modelId
+  let candidateMeta: PanelVideoCandidateMeta | null = null
+
+  if (videoOperation) {
+    const panelVideoCandidates = resolvePanelVideoCandidates({
+      videoCandidates: typeof panel.videoCandidates === 'string' ? panel.videoCandidates : null,
+      videoUrl: panel.videoUrl,
+      videoGenerationMode: panel.videoGenerationMode,
+    })
+    const sourceCandidate = panelVideoCandidates.find((candidate) => candidate.id === videoOperation.sourceCandidateId)
+
+    if (!sourceCandidate?.videoUrl) {
+      throw new Error(`VIDEO_OPERATION_SOURCE_CANDIDATE_NOT_FOUND: ${videoOperation.sourceCandidateId}`)
+    }
+
+    if (videoOperation.mode === 'edit' && isOfficialGrokVideoModel(model)) {
+      const estimatedSourceDuration = estimatePanelVideoCandidateDurationSeconds(
+        panelVideoCandidates,
+        sourceCandidate.id,
+        panel.duration,
+      )
+      if (
+        estimatedSourceDuration !== null
+        && estimatedSourceDuration > GROK_VIDEO_EDIT_MAX_SOURCE_DURATION_SECONDS
+      ) {
+        throw new Error(
+          `GROK_VIDEO_EDIT_SOURCE_DURATION_UNSUPPORTED: source video is ${formatDurationSeconds(estimatedSourceDuration)}s, but Grok video edit supports up to ${formatDurationSeconds(GROK_VIDEO_EDIT_MAX_SOURCE_DURATION_SECONDS)}s`,
+        )
+      }
+    }
+
+    sourceVideoUrl = toSignedUrlIfCos(sourceCandidate.videoUrl, 3600) || sourceCandidate.videoUrl
+    if (!sourceVideoUrl) {
+      throw new Error(`VIDEO_OPERATION_SOURCE_VIDEO_INVALID: ${videoOperation.sourceCandidateId}`)
+    }
+
+    if (videoOperation.mode === 'extend' && typeof videoOperation.extendDuration === 'number') {
+      generationOptions.duration = videoOperation.extendDuration
+    }
+
+    candidateMeta = {
+      sourceCandidateId: sourceCandidate.id,
+      sourceGenerationMode: sourceCandidate.generationMode,
+      ...(videoOperation.mode === 'extend' && typeof videoOperation.extendDuration === 'number'
+        ? { extendDuration: videoOperation.extendDuration }
+        : {}),
+    }
+  } else {
+    if (!panel.imageUrl) {
+      throw new Error(`Panel ${panel.id} has no imageUrl`)
+    }
+    const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
+    if (!sourceImageUrl) {
+      throw new Error(`Panel ${panel.id} image url invalid`)
+    }
+    const normalizedPanelImage = await normalizeToBase64ForGeneration(sourceImageUrl)
+    if (isOfficialGrokVideoModel(modelId) && !firstLastFramePayload && referenceContext.referenceImages.length > 0) {
+      referenceImagesForGeneration = Array.from(new Set([
+        normalizedPanelImage,
+        ...referenceContext.referenceImages,
+      ])).slice(0, 7)
+    } else {
+      sourceImageBase64 = normalizedPanelImage
+    }
+  }
 
   if (firstLastFramePayload) {
     model =
@@ -141,13 +526,19 @@ async function generateVideoForPanel(
     }
   }
 
+  if (isOfficialGrokVideoModel(model) && (videoOperation || firstLastFramePayload)) {
+    referenceImagesForGeneration = []
+  }
+
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
     modelId: model,
-    imageUrl: sourceImageBase64,
+    ...(sourceImageBase64 ? { imageUrl: sourceImageBase64 } : {}),
+    ...(sourceVideoUrl ? { videoUrl: sourceVideoUrl } : {}),
+    ...(referenceImagesForGeneration.length > 0 ? { referenceImages: referenceImagesForGeneration } : {}),
     options: {
       prompt,
-      ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
+      ...((!videoOperation && projectVideoRatio) ? { aspectRatio: projectVideoRatio } : {}),
       ...generationOptions,
       generationMode,
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
@@ -174,10 +565,71 @@ async function generateVideoForPanel(
   return {
     cosKey,
     generationMode,
+    prompt,
+    generationModel: model,
+    candidateMeta,
     ...(typeof generatedVideo.actualVideoTokens === 'number'
       ? { actualVideoTokens: generatedVideo.actualVideoTokens }
       : {}),
   }
+}
+
+async function persistGeneratedPanelVideoCandidate(params: {
+  panelId: string
+  cosKey: string
+  generationMode: VideoGenerationMode
+  prompt: string
+  generationModel: string
+  candidateMeta?: PanelVideoCandidateMeta | null
+}) {
+  const candidate = {
+    id: randomUUID(),
+    videoUrl: params.cosKey,
+    generationMode: params.generationMode,
+    createdAt: new Date().toISOString(),
+    model: params.generationModel,
+    prompt: params.prompt,
+    meta: params.candidateMeta || null,
+  }
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const currentPanel = await prisma.novelPromotionPanel.findUnique({
+      where: { id: params.panelId },
+      select: {
+        id: true,
+        updatedAt: true,
+        videoUrl: true,
+        videoCandidates: true,
+        videoGenerationMode: true,
+      },
+    })
+
+    if (!currentPanel) {
+      throw new Error(`Panel not found while persisting generated video: ${params.panelId}`)
+    }
+
+    const nextState = appendPanelVideoCandidate(currentPanel, candidate)
+    const updated = await prisma.novelPromotionPanel.updateMany({
+      where: {
+        id: currentPanel.id,
+        updatedAt: currentPanel.updatedAt,
+      },
+      data: {
+        videoCandidates: nextState.serialized,
+        videoUrl: nextState.selectedVideoUrl,
+        videoGenerationMode: nextState.selectedGenerationMode,
+      },
+    })
+
+    if (updated.count === 1) {
+      return {
+        candidateId: candidate.id,
+        selectedVideoUrl: nextState.selectedVideoUrl,
+      }
+    }
+  }
+
+  throw new Error(`Failed to persist generated panel video after retries: ${params.panelId}`)
 }
 
 async function handleVideoPanelTask(job: Job<TaskJobData>) {
@@ -196,7 +648,14 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     panelId: panel.id,
   })
 
-  const { cosKey, generationMode, actualVideoTokens } = await generateVideoForPanel(
+  const {
+    cosKey,
+    generationMode,
+    prompt,
+    generationModel,
+    candidateMeta,
+    actualVideoTokens,
+  } = await generateVideoForPanel(
     job,
     panel,
     payload,
@@ -206,12 +665,13 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
   )
 
   await assertTaskActive(job, 'persist_panel_video')
-  await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
-    data: {
-      videoUrl: cosKey,
-      videoGenerationMode: generationMode,
-    },
+  await persistGeneratedPanelVideoCandidate({
+    panelId: panel.id,
+    cosKey,
+    generationMode,
+    prompt,
+    generationModel,
+    candidateMeta,
   })
 
   return {

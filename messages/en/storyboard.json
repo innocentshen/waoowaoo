@@ -148,6 +148,15 @@
         "generateMultiple": "Generate multiple candidates",
         "generateCount": "Generate {count}",
         "generateCountSuffix": "candidates",
+        "upload": "Upload",
+        "uploadReplace": "Upload Replacement",
+        "chooseShot": "Choose Shot",
+        "chooseShotTitle": "Use Another Storyboard Image",
+        "chooseShotDescription": "Pick another storyboard frame to replace the current image.",
+        "useThisShot": "Use This Shot",
+        "noOtherShots": "No other storyboard images available",
+        "chooseShotFailedError": "Failed to use storyboard image: {error}",
+        "uploadFailedError": "Upload failed: {error}",
         "undoShort": "Back"
     },
     "candidate": {

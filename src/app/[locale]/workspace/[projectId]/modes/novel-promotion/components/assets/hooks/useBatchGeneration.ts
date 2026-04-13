@@ -13,13 +13,14 @@ import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { CharacterAppearance } from '@/types/project'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
-import { useProjectAssets, useRefreshProjectAssets, useGenerateProjectCharacterImage, useGenerateProjectLocationImage, type Character } from '@/lib/query/hooks'
+import { useRefreshProjectAssets, useGenerateProjectCharacterImage, useGenerateProjectLocationImage, type Character } from '@/lib/query/hooks'
 import {
     createManualKeyBaseline,
     isAppearanceTaskRunning,
     shouldResolveManualKey,
     type ManualRegenerationBaseline,
 } from './useBatchGeneration.helpers'
+import { useAssetStageProjectAssets } from '../AssetStageProjectAssetsContext'
 
 interface UseBatchGenerationProps {
     projectId: string
@@ -33,9 +34,9 @@ export function useBatchGeneration({
 }: UseBatchGenerationProps) {
     const t = useTranslations('assets')
     // 🔥 直接订阅缓存 - 消除 props drilling
-    const { data: assets } = useProjectAssets(projectId)
-    const characters = useMemo(() => assets?.characters ?? [], [assets?.characters])
-    const locations = useMemo(() => assets?.locations ?? [], [assets?.locations])
+    const assets = useAssetStageProjectAssets(projectId)
+    const characters = useMemo(() => assets.characters, [assets.characters])
+    const locations = useMemo(() => assets.locations, [assets.locations])
     const { count: characterGenerationCount } = useImageGenerationCount('character')
     const { count: locationGenerationCount } = useImageGenerationCount('location')
 

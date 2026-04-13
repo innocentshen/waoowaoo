@@ -31,4 +31,13 @@ describe('toAiRuntimeError empty response mapping', () => {
     expect(runtimeError.code).toBe('RATE_LIMIT')
     expect(runtimeError.retryable).toBe(true)
   })
+
+  it('maps upstream 502 html gateway pages to EXTERNAL_ERROR so worker retries can kick in', () => {
+    const runtimeError = toAiRuntimeError(
+      new Error('502 <!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>Origin server error</body></html>'),
+    )
+    expect(runtimeError.code).toBe('EXTERNAL_ERROR')
+    expect(runtimeError.retryable).toBe(true)
+    expect(runtimeError.message).toBe('External service failed')
+  })
 })

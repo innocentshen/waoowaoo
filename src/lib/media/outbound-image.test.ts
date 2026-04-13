@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   OutboundImageNormalizeError,
   normalizeReferenceImagesForGeneration,
+  normalizeReferenceImagesForOriginalMedia,
   normalizeToBase64ForGeneration,
   normalizeToOriginalMediaUrl,
   sanitizeImageInputsForTaskPayload,
@@ -9,6 +10,22 @@ import {
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
 vi.mock('@/lib/storage', () => ({
+  getObjectBuffer: vi.fn(async (key: string) => {
+    if (key === 'images/direct-storage.png') {
+      return Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
+    }
+    if (key === 'images/from-sign-route.jpg') {
+      return Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01])
+    }
+    if (key === 'images/from-api-files.webp') {
+      return Buffer.from([
+        0x52, 0x49, 0x46, 0x46,
+        0x00, 0x00, 0x00, 0x00,
+        0x57, 0x45, 0x42, 0x50,
+      ])
+    }
+    throw new Error(`missing object: ${key}`)
+  }),
   getSignedUrl: vi.fn((key: string) => `/signed/${key}`),
   toFetchableUrl: vi.fn((value: string) => (
     value.startsWith('/') ? `http://localhost:3000${value}` : value
@@ -93,6 +110,18 @@ describe('outbound-image normalization', () => {
     expect(dataUrl).toBe('data:image/png;base64,AQID')
   })
 
+  it('reads storage-sign routes directly from storage without fetch', async () => {
+    const dataUrl = await normalizeToBase64ForGeneration('/api/storage/sign?key=images%2Ffrom-sign-route.jpg&expires=3600')
+    expect(dataUrl).toBe('data:image/jpeg;base64,/9j/4AAQSkZJRgAB')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads local api file routes directly from storage without fetch', async () => {
+    const dataUrl = await normalizeToBase64ForGeneration('/api/files/images%2Ffrom-api-files.webp')
+    expect(dataUrl).toBe('data:image/webp;base64,UklGRgAAAABXRUJQ')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('sniffs png mime when upstream returns application/octet-stream', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -149,6 +178,19 @@ describe('outbound-image normalization', () => {
     ])
     expect(normalized).toHaveLength(1)
     expect(normalized[0]).toBe('data:image/png;base64,BwgJ')
+  })
+
+  it('normalizes references to original media urls with dedupe and failure isolation', async () => {
+    const normalized = await normalizeReferenceImagesForOriginalMedia([
+      'images/direct.png',
+      'images/direct.png',
+      'https://example.com/a.png',
+    ])
+
+    expect(normalized).toEqual([
+      'http://localhost:3000/signed/images/direct.png',
+      'https://example.com/a.png',
+    ])
   })
 
   it('reports structured issue and fails explicitly when all references fail', async () => {

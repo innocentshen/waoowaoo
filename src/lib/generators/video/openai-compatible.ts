@@ -10,6 +10,9 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
   }
 
   protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+    if (!params.imageUrl) {
+      throw new Error('OPENAI_COMPAT_VIDEO_INPUT_REQUIRED: imageUrl')
+    }
     const { userId, imageUrl, prompt = '', options = {} } = params
     return await generateVideoViaOpenAICompat({
       userId,

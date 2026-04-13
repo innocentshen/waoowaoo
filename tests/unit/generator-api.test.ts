@@ -222,6 +222,25 @@ describe('generator-api gateway routing', () => {
     expect(result).toEqual({ success: true, videoUrl: 'official-video' })
   })
 
+  it('passes video reference images through to provider generators', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'fal',
+      modelId: 'kling',
+      modelKey: 'fal::kling',
+      mediaType: 'video',
+    })
+    resolveModelGatewayRouteMock.mockReturnValueOnce('official')
+
+    await generateVideo('user-1', 'fal::kling', 'https://example.com/source.png', {
+      prompt: 'animate this shot',
+      referenceImages: ['ref-1', 'ref-2'],
+    })
+
+    expect(videoGeneratorGenerateMock).toHaveBeenCalledWith(expect.objectContaining({
+      referenceImages: ['ref-1', 'ref-2'],
+    }))
+  })
+
   it('keeps audio generation on provider generator path', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'fal',
@@ -306,6 +325,31 @@ describe('generator-api gateway routing', () => {
     expect(createImageGeneratorMock).toHaveBeenCalledWith('grok', 'grok-imagine-image')
     expect(generateImageViaOpenAICompatMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, imageUrl: 'official-image' })
+  })
+
+  it('keeps all grok image reference inputs for the provider generator', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'grok',
+      modelId: 'grok-imagine-image',
+      modelKey: 'grok::grok-imagine-image',
+      mediaType: 'image',
+    })
+    getProviderConfigMock.mockResolvedValueOnce({
+      id: 'grok',
+      name: 'xAI Grok',
+      apiKey: 'grok-key',
+      baseUrl: 'https://api.x.ai/v1',
+      gatewayRoute: 'official',
+      apiMode: undefined,
+    })
+
+    await generateImage('user-1', 'grok::grok-imagine-image', 'draw cat', {
+      referenceImages: ['ref-1', 'ref-2'],
+    })
+
+    expect(imageGeneratorGenerateMock).toHaveBeenCalledWith(expect.objectContaining({
+      referenceImages: ['ref-1', 'ref-2'],
+    }))
   })
 
   it('forces grok video generation onto the official provider path', async () => {

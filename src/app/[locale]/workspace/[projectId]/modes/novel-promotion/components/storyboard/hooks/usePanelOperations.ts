@@ -1,7 +1,7 @@
 'use client'
 
 import type { PanelEditData } from '../../PanelEditForm'
-import { useRefreshProjectAssets } from '@/lib/query/hooks'
+import { useRefreshAll } from '@/lib/query/hooks'
 import { usePanelCrudActions } from './usePanelCrudActions'
 import { usePanelInsertActions } from './usePanelInsertActions'
 import { useStoryboardGroupActions } from './useStoryboardGroupActions'
@@ -17,7 +17,7 @@ export function usePanelOperations({
   episodeId,
   panelEditsRef,
 }: UsePanelOperationsProps) {
-  const onRefresh = useRefreshProjectAssets(projectId)
+  const onRefresh = useRefreshAll(projectId, episodeId)
 
   const panelCrud = usePanelCrudActions({
     projectId,

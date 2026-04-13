@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProjectCostDetails } from '@/lib/billing'
 import { BILLING_CURRENCY } from '@/lib/billing/currency'
-import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 /**
  * GET /api/projects/[projectId]/costs
@@ -21,10 +21,7 @@ export const GET = apiHandler(async (
   const { projectId } = await context.params
 
   // 验证项目归属
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { userId: true, name: true }
-  })
+  const project = await findProjectBaseById(projectId)
 
   if (!project) {
     throw new ApiError('NOT_FOUND')

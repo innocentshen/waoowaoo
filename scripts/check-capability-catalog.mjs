@@ -5,8 +5,9 @@ import path from 'node:path'
 const CAPABILITY_NAMESPACES = new Set(['llm', 'image', 'video', 'audio', 'lipsync'])
 const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
   llm: new Set(['reasoningEffortOptions', 'fieldI18n']),
-  image: new Set(['resolutionOptions', 'fieldI18n']),
+  image: new Set(['aspectRatioOptions', 'resolutionOptions', 'fieldI18n']),
   video: new Set([
+    'aspectRatioOptions',
     'generationModeOptions',
     'generateAudioOptions',
     'durationOptions',
@@ -21,8 +22,9 @@ const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
 }
 const CAPABILITY_NAMESPACE_I18N_FIELDS = {
   llm: { reasoningEffort: 'reasoningEffortOptions' },
-  image: { resolution: 'resolutionOptions' },
+  image: { aspectRatio: 'aspectRatioOptions', resolution: 'resolutionOptions' },
   video: {
+    aspectRatio: 'aspectRatioOptions',
     generationMode: 'generationModeOptions',
     generateAudio: 'generateAudioOptions',
     duration: 'durationOptions',
@@ -192,6 +194,9 @@ function validateCapabilitiesForModelType(issues, file, index, modelType, capabi
       pushIssue(issues, file, index, 'capabilities.image', 'image capabilities must be an object')
     } else {
       validateAllowedFields(issues, file, index, 'image', image)
+      if (image.aspectRatioOptions !== undefined && !isStringArray(image.aspectRatioOptions)) {
+        pushIssue(issues, file, index, 'capabilities.image.aspectRatioOptions', 'must be string array')
+      }
       if (image.resolutionOptions !== undefined && !isStringArray(image.resolutionOptions)) {
         pushIssue(issues, file, index, 'capabilities.image.resolutionOptions', 'must be string array')
       }
@@ -205,6 +210,9 @@ function validateCapabilitiesForModelType(issues, file, index, modelType, capabi
       pushIssue(issues, file, index, 'capabilities.video', 'video capabilities must be an object')
     } else {
       validateAllowedFields(issues, file, index, 'video', video)
+      if (video.aspectRatioOptions !== undefined && !isStringArray(video.aspectRatioOptions)) {
+        pushIssue(issues, file, index, 'capabilities.video.aspectRatioOptions', 'must be string array')
+      }
       if (video.generationModeOptions !== undefined && !isStringArray(video.generationModeOptions)) {
         pushIssue(issues, file, index, 'capabilities.video.generationModeOptions', 'must be string array')
       }
@@ -263,7 +271,7 @@ function validateCapabilitiesForModelType(issues, file, index, modelType, capabi
 async function listCatalogFiles() {
   const entries = await fs.readdir(CATALOG_DIR, { withFileTypes: true })
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.catalog.json'))
     .map((entry) => path.join(CATALOG_DIR, entry.name))
 }
 
@@ -280,7 +288,7 @@ async function main() {
   const issues = []
   const files = await listCatalogFiles()
   if (files.length === 0) {
-    throw new Error(`no catalog files found in ${CATALOG_DIR}`)
+    throw new Error(`no .catalog.json files found in ${CATALOG_DIR}`)
   }
 
   for (const filePath of files) {

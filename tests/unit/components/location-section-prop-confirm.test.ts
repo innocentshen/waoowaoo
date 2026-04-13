@@ -7,11 +7,11 @@ import { NextIntlClientProvider } from 'next-intl'
 import type { AbstractIntlMessages } from 'next-intl'
 import LocationSection from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/LocationSection'
 
-const locationCardMock = vi.hoisted(() => vi.fn((_props: unknown) => null))
+const locationCardMock = vi.hoisted(() => vi.fn((_props?: unknown) => null))
 const useProjectAssetsMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/query/hooks/useProjectAssets', () => ({
-  useProjectAssets: (projectId: string | null) => useProjectAssetsMock(projectId),
+vi.mock('@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/AssetStageProjectAssetsContext', () => ({
+  useAssetStageProjectAssets: (projectId: string | null) => useProjectAssetsMock(projectId),
 }))
 
 vi.mock('@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/LocationCard', () => ({
@@ -25,23 +25,26 @@ vi.mock('@/components/ui/icons', () => ({
 const messages = {
   assets: {
     stage: {
-      locationAssets: '场景资产',
-      locationCounts: '{count} 个场景',
-      propAssets: '道具资产',
-      propCounts: '{count} 个道具',
+      locationAssets: 'Locations',
+      locationCounts: '{count} locations',
+      propAssets: 'Props',
+      propCounts: '{count} props',
+    },
+    toolbar: {
+      generateAll: 'Generate all',
     },
     location: {
-      add: '新建场景',
+      add: 'Add location',
     },
     prop: {
-      add: '新建道具',
+      add: 'Add prop',
     },
   },
 } as const
 
 function renderWithIntl(node: ReactElement) {
   const providerProps: ComponentProps<typeof NextIntlClientProvider> = {
-    locale: 'zh',
+    locale: 'en',
     messages: messages as unknown as AbstractIntlMessages,
     timeZone: 'Asia/Shanghai',
     children: node,
@@ -57,32 +60,30 @@ describe('LocationSection prop confirm wiring', () => {
     Reflect.set(globalThis, 'React', React)
     locationCardMock.mockClear()
     useProjectAssetsMock.mockReturnValue({
-      data: {
-        characters: [],
-        locations: [],
-        props: [{
-          id: 'prop-1',
-          name: '青铜匕首',
-          summary: '古旧短刃',
-          selectedImageId: 'prop-image-2',
-          images: [
-            {
-              id: 'prop-image-1',
-              imageIndex: 0,
-              description: '候选 1',
-              imageUrl: 'https://example.com/prop-1.png',
-              isSelected: false,
-            },
-            {
-              id: 'prop-image-2',
-              imageIndex: 1,
-              description: '候选 2',
-              imageUrl: 'https://example.com/prop-2.png',
-              isSelected: true,
-            },
-          ],
-        }],
-      },
+      characters: [],
+      locations: [],
+      props: [{
+        id: 'prop-1',
+        name: 'Bronze Dagger',
+        summary: 'Ancient short blade',
+        selectedImageId: 'prop-image-2',
+        images: [
+          {
+            id: 'prop-image-1',
+            imageIndex: 0,
+            description: 'Option 1',
+            imageUrl: 'https://example.com/prop-1.png',
+            isSelected: false,
+          },
+          {
+            id: 'prop-image-2',
+            imageIndex: 1,
+            description: 'Option 2',
+            imageUrl: 'https://example.com/prop-2.png',
+            isSelected: true,
+          },
+        ],
+      }],
     })
 
     renderWithIntl(
@@ -92,6 +93,9 @@ describe('LocationSection prop confirm wiring', () => {
         activeTaskKeys: new Set<string>(),
         onClearTaskKey: () => undefined,
         onRegisterTransientTaskKey: () => undefined,
+        onGenerateAll: () => undefined,
+        generateAllButtonLabel: 'Generate all',
+        isGenerateAllDisabled: false,
         onAddLocation: () => undefined,
         onDeleteLocation: () => undefined,
         onEditLocation: () => undefined,

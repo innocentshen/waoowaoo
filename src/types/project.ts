@@ -1,5 +1,6 @@
 import type { CapabilitySelections } from '@/lib/model-config-contract'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
+import type { ResolvedPanelVideoCandidate } from '@/lib/novel-promotion/video-candidates'
 
 // ============================================
 // 基础项目类型
@@ -182,7 +183,8 @@ export interface NovelPromotionPanel {
   videoPrompt: string | null
   firstLastFramePrompt?: string | null
   videoUrl: string | null
-  videoGenerationMode?: 'normal' | 'firstlastframe' | null
+  videoCandidates?: ResolvedPanelVideoCandidate[] | null
+  videoGenerationMode?: 'normal' | 'firstlastframe' | 'edit' | 'extend' | null
   videoMedia?: MediaRef | null
   lipSyncVideoUrl?: string | null
   lipSyncVideoMedia?: MediaRef | null

@@ -5,6 +5,7 @@ export interface VideoSubmissionPanelSnapshot {
   storyboardId: string
   panelIndex: number
   videoUrl?: string | null
+  videoCandidates?: Array<{ id: string; videoUrl: string; isSelected: boolean }> | null
   videoErrorMessage?: string | null
   videoTaskRunning?: boolean | null
 }
@@ -22,6 +23,11 @@ export function createVideoSubmissionBaseline(panel: VideoSubmissionPanelSnapsho
   return {
     signature: JSON.stringify({
       videoUrl: panel.videoUrl || null,
+      videoCandidates: (panel.videoCandidates || []).map((candidate) => ({
+        id: candidate.id,
+        videoUrl: candidate.videoUrl,
+        isSelected: candidate.isSelected,
+      })),
       videoErrorMessage: panel.videoErrorMessage || null,
     }),
     startedAt: Date.now(),

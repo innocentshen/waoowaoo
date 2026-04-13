@@ -10,10 +10,10 @@ import { useTranslations } from 'next-intl'
  */
 
 import { Location, Prop } from '@/types/project'
-import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import LocationCard from './LocationCard'
 import { AppIcon } from '@/components/ui/icons'
 import { resolveLocationBackedGenerateType } from './location-backed-asset'
+import { useAssetStageProjectAssets } from './AssetStageProjectAssetsContext'
 
 interface LocationSectionProps {
     // 🔥 V6.5 删除：locations prop - 现在内部直接订阅
@@ -22,6 +22,9 @@ interface LocationSectionProps {
     activeTaskKeys: Set<string>
     onClearTaskKey: (key: string) => void
     onRegisterTransientTaskKey: (key: string) => void
+    onGenerateAll: () => void
+    generateAllButtonLabel: string
+    isGenerateAllDisabled?: boolean
     // 回调函数
     onAddLocation: () => void
     onDeleteLocation: (locationId: string) => void
@@ -47,6 +50,9 @@ export default function LocationSection({
     activeTaskKeys,
     onClearTaskKey,
     onRegisterTransientTaskKey,
+    onGenerateAll,
+    generateAllButtonLabel,
+    isGenerateAllDisabled = false,
     onAddLocation,
     onDeleteLocation,
     onEditLocation,
@@ -63,10 +69,10 @@ export default function LocationSection({
 }: LocationSectionProps) {
     const t = useTranslations('assets')
 
-    const { data: assets } = useProjectAssets(projectId)
+    const assets = useAssetStageProjectAssets(projectId)
     const allLocations: Array<Location | Prop> = assetType === 'prop'
-        ? assets?.props ?? []
-        : assets?.locations ?? []
+        ? assets.props
+        : assets.locations
     const locations = filterIds ? allLocations.filter((l) => filterIds.has(l.id)) : allLocations
     const assetKey = assetType === 'prop' ? 'prop' : 'location'
     const generateType = resolveLocationBackedGenerateType(assetType)
@@ -87,12 +93,22 @@ export default function LocationSection({
                             : t("stage.locationCounts", { count: locations.length })}
                     </span>
                 </div>
-                <button
-                    onClick={onAddLocation}
-                    className="glass-btn-base glass-btn-primary flex items-center gap-2 px-4 py-2 font-medium"
-                >
-                    + {t(`${assetKey}.add`)}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={onGenerateAll}
+                        disabled={isGenerateAllDisabled}
+                        className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <AppIcon name="sparkles" className="h-4 w-4" />
+                        <span>{generateAllButtonLabel}</span>
+                    </button>
+                    <button
+                        onClick={onAddLocation}
+                        className="glass-btn-base glass-btn-primary flex items-center gap-2 px-4 py-2 font-medium"
+                    >
+                        + {t(`${assetKey}.add`)}
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-6 gap-6">

@@ -23,6 +23,7 @@ export const POST = apiHandler(async (
     const authResult = await requireProjectAuthLight(projectId)
     if (isErrorResponse(authResult)) return authResult
     const session = authResult.session
+    const projectBase = authResult.project
 
     const userId = session.user.id
     const username = session.user.name || session.user.email || 'unknown'
@@ -39,14 +40,14 @@ export const POST = apiHandler(async (
     // 验证项目存在
     const project = await prisma.novelPromotionProject.findFirst({
         where: { projectId },
-        include: { project: true }
+        select: { id: true }
     })
 
     if (!project) {
         throw new ApiError('NOT_FOUND')
     }
 
-    const projectName = project.project?.name || projectId
+    const projectName = projectBase.name || projectId
 
     // 执行分集标记检测
     const markerResult = detectEpisodeMarkers(content)

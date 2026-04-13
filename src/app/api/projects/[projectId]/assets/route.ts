@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
     return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -24,10 +25,7 @@ export const GET = apiHandler(async (
     const { session } = authResult
 
     // 验证项目所有权
-    const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { userId: true }
-    })
+    const project = await findProjectBaseById(projectId)
 
     if (!project) {
         throw new ApiError('NOT_FOUND')

@@ -7,11 +7,17 @@ type WorkerProcessor = (job: Job<TaskJobData>) => Promise<unknown>
 type PanelRow = {
   id: string
   videoUrl: string | null
+  videoCandidates: string | null
+  videoGenerationMode: string | null
   imageUrl: string | null
   videoPrompt: string | null
   description: string | null
+  characters?: string | null
+  location?: string | null
+  props?: string | null
   firstLastFramePrompt: string | null
   duration: number | null
+  updatedAt: Date
 }
 
 const workerState = vi.hoisted(() => ({
@@ -27,7 +33,9 @@ const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
   getProjectModels: vi.fn(async () => ({ videoRatio: '16:9' })),
   resolveLipSyncVideoSource: vi.fn(async () => 'https://provider.example/lipsync.mp4'),
-  resolveVideoSourceFromGeneration: vi.fn<(...args: unknown[]) => Promise<{ url: string; actualVideoTokens?: number; downloadHeaders?: Record<string, string> }>>(async () => ({ url: 'https://provider.example/video.mp4' })),
+  resolveVideoSourceFromGeneration: vi.fn<
+    (...args: unknown[]) => Promise<{ url: string; actualVideoTokens?: number; downloadHeaders?: Record<string, string> }>
+  >(async () => ({ url: 'https://provider.example/video.mp4' })),
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
   uploadVideoSourceToCos: vi.fn(async () => 'cos/lip-sync/video.mp4'),
 }))
@@ -43,12 +51,49 @@ const concurrencyGateMock = vi.hoisted(() => ({
     run: () => Promise<T>
   }) => await input.run()),
 }))
+const imageTaskSharedMock = vi.hoisted(() => ({
+  findCharacterByName: vi.fn((characters: Array<{ name: string }>, referenceName: string) =>
+    characters.find((character) => character.name === referenceName)),
+  parseImageUrls: vi.fn((value: string | null | undefined) => {
+    if (!value) return []
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }),
+  parsePanelCharacterReferences: vi.fn((value: string | null | undefined) => {
+    if (!value) return []
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }),
+  parseNamedReferenceList: vi.fn((value: string | null | undefined) => {
+    if (!value) return []
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return value.split(',').map((item) => item.trim()).filter(Boolean)
+    }
+  }),
+  resolveNovelData: vi.fn(async () => ({
+    characters: [] as Array<Record<string, unknown>>,
+    locations: [] as Array<Record<string, unknown>>,
+    props: [] as Array<Record<string, unknown>>,
+  })),
+}))
 
 const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(async () => undefined),
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
   novelPromotionVoiceLine: {
     findUnique: vi.fn(),
@@ -91,23 +136,33 @@ vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
 vi.mock('@/lib/model-config-contract', () => ({
-  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
+  parseModelKeyStrict: vi.fn((value: string) => {
+    const [provider = 'fal'] = value.split('::')
+    return { provider }
+  }),
 }))
 vi.mock('@/lib/api-config', () => ({
   getProviderConfig: vi.fn(async () => ({ apiKey: 'api-key' })),
 }))
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
+vi.mock('@/lib/workers/handlers/image-task-handler-shared', () => imageTaskSharedMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
     id: 'panel-1',
     videoUrl: 'cos/base-video.mp4',
+    videoCandidates: null,
+    videoGenerationMode: 'normal',
     imageUrl: 'cos/panel-image.png',
     videoPrompt: 'panel prompt',
     description: 'panel description',
+    characters: null,
+    location: null,
+    props: null,
     firstLastFramePrompt: null,
     duration: 5,
+    updatedAt: new Date('2026-04-09T00:00:00.000Z'),
     ...(overrides || {}),
   }
 }
@@ -150,7 +205,7 @@ describe('worker video processor behavior', () => {
     mod.createVideoWorker()
   })
 
-  it('VIDEO_PANEL: 缺少 payload.videoModel 时显式失败', async () => {
+  it('fails explicitly when payload.videoModel is missing', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -162,7 +217,7 @@ describe('worker video processor behavior', () => {
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
   })
 
-  it('VIDEO_PANEL: 透传异步轮询返回的下载头到 COS 上传', async () => {
+  it('passes download headers through to COS upload for provider videos', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -194,9 +249,19 @@ describe('worker video processor behavior', () => {
         Authorization: 'Bearer oa-key',
       },
     )
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'panel-1',
+        updatedAt: new Date('2026-04-09T00:00:00.000Z'),
+      },
+      data: expect.objectContaining({
+        videoUrl: 'cos/base-video.mp4',
+        videoGenerationMode: 'normal',
+      }),
+    })
   })
 
-  it('VIDEO_PANEL: 将 Ark 返回的实际视频 token 用量透传到任务结果', async () => {
+  it('returns actual video tokens from the provider response', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -224,7 +289,484 @@ describe('worker video processor behavior', () => {
     })
   })
 
-  it('LIP_SYNC: 缺少 panel 时显式失败', async () => {
+  it('collects selected character, location, and prop references for video generation', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default', slot: 'center' },
+        ]),
+        location: 'Safe House',
+        props: 'Ancient Sword',
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [
+        {
+          name: 'Safe House',
+          images: [
+            {
+              isSelected: true,
+              description: 'industrial loft with rain-streaked windows',
+              imageUrl: 'cos/location-reference.png',
+            },
+          ],
+        },
+      ],
+      props: [
+        {
+          name: 'Ancient Sword',
+          summary: 'weathered bronze blade',
+          images: [
+            {
+              isSelected: true,
+              description: 'weathered bronze blade with a leather-wrapped hilt',
+              imageUrl: 'cos/prop-reference.png',
+            },
+          ],
+        },
+      ],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'fal::seedance/video',
+        referenceSelection: {
+          includeCharacters: true,
+          includeLocation: true,
+          includeProps: true,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        referenceImages: [
+          'https://signed.example/cos/hero-reference.png',
+          'https://signed.example/cos/location-reference.png',
+          'https://signed.example/cos/prop-reference.png',
+        ],
+        options: expect.objectContaining({
+          prompt: expect.stringContaining('Character references:'),
+        }),
+      }),
+    )
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls.at(-1)?.[1] as {
+      options?: { prompt?: string }
+    } | undefined
+    expect(generationCall?.options?.prompt).toContain('Location references:')
+    expect(generationCall?.options?.prompt).toContain('Prop references:')
+    expect(generationCall?.options?.prompt).toContain('black coat, calm expression')
+    expect(generationCall?.options?.prompt).toContain('industrial loft with rain-streaked windows')
+    expect(generationCall?.options?.prompt).toContain('weathered bronze blade with a leather-wrapped hilt')
+  })
+
+  it('uses only explicitly selected related assets when fine-grained references are provided', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default' },
+          { name: 'Villain', appearance: 'armored' },
+        ]),
+        location: JSON.stringify(['Safe House', 'Rooftop']),
+        props: JSON.stringify(['Ancient Sword', 'Gold Coin']),
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+        {
+          name: 'Villain',
+          appearances: [
+            {
+              changeReason: 'armored',
+              descriptions: JSON.stringify(['silver armor, scar across left eye']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/villain-reference.png']),
+              imageUrl: 'cos/villain-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [
+        {
+          name: 'Safe House',
+          images: [
+            {
+              isSelected: true,
+              description: 'industrial loft with rain-streaked windows',
+              imageUrl: 'cos/location-safe-house.png',
+            },
+          ],
+        },
+        {
+          name: 'Rooftop',
+          images: [
+            {
+              isSelected: true,
+              description: 'windy rooftop overlooking the city skyline',
+              imageUrl: 'cos/location-rooftop.png',
+            },
+          ],
+        },
+      ],
+      props: [
+        {
+          name: 'Ancient Sword',
+          images: [
+            {
+              isSelected: true,
+              description: 'weathered bronze blade with a leather-wrapped hilt',
+              imageUrl: 'cos/prop-sword.png',
+            },
+          ],
+        },
+        {
+          name: 'Gold Coin',
+          images: [
+            {
+              isSelected: true,
+              description: 'worn coin with a dragon emblem',
+              imageUrl: 'cos/prop-coin.png',
+            },
+          ],
+        },
+      ],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'fal::seedance/video',
+        referenceSelection: {
+          includeCharacters: true,
+          includeLocation: true,
+          includeProps: true,
+          characters: [{ name: 'Villain', appearance: 'armored' }],
+          locations: ['Rooftop'],
+          props: ['Gold Coin'],
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const generationCall = (utilsMock.resolveVideoSourceFromGeneration.mock.calls as Array<unknown[]>).at(-1)?.[1] as {
+      referenceImages?: string[]
+      options?: { prompt?: string }
+    } | undefined
+
+    expect(generationCall?.referenceImages).toEqual([
+      'https://signed.example/cos/villain-reference.png',
+      'https://signed.example/cos/location-rooftop.png',
+      'https://signed.example/cos/prop-coin.png',
+    ])
+    expect(generationCall?.options?.prompt).toContain('silver armor, scar across left eye')
+    expect(generationCall?.options?.prompt).toContain('windy rooftop overlooking the city skyline')
+    expect(generationCall?.options?.prompt).toContain('worn coin with a dragon emblem')
+    expect(generationCall?.options?.prompt).not.toContain('black coat, calm expression')
+    expect(generationCall?.options?.prompt).not.toContain('industrial loft with rain-streaked windows')
+    expect(generationCall?.options?.prompt).not.toContain('weathered bronze blade with a leather-wrapped hilt')
+  })
+
+  it('switches official grok related-asset generation into reference-to-video mode', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default', slot: 'center' },
+        ]),
+        location: 'Safe House',
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [
+        {
+          name: 'Safe House',
+          images: [
+            {
+              isSelected: true,
+              description: 'industrial loft with rain-streaked windows',
+              imageUrl: 'cos/location-reference.png',
+            },
+          ],
+        },
+      ],
+      props: [],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'grok::grok-imagine-video',
+        referenceSelection: {
+          includeCharacters: true,
+          includeLocation: true,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls.at(-1)?.[1] as
+      | {
+        imageUrl?: string
+        referenceImages?: string[]
+        options?: { prompt?: string; generationMode?: string }
+      }
+      | undefined
+
+    expect(generationCall?.imageUrl).toBeUndefined()
+    expect(generationCall?.referenceImages).toEqual([
+      'https://signed.example/cos/panel-image.png',
+      'https://signed.example/cos/hero-reference.png',
+      'https://signed.example/cos/location-reference.png',
+    ])
+    expect(generationCall?.options?.generationMode).toBe('normal')
+    expect(generationCall?.options?.prompt).toContain('Character references:')
+    expect(generationCall?.options?.prompt).toContain('Location references:')
+  })
+
+  it('appends generated videos to videoCandidates instead of overwriting the selected video', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        videoUrl: 'cos/base-video.mp4',
+        videoCandidates: JSON.stringify([
+          {
+            id: 'existing',
+            videoUrl: 'cos/base-video.mp4',
+            generationMode: 'normal',
+            createdAt: '2026-04-08T00:00:00.000Z',
+          },
+        ]),
+      }),
+    )
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'fal::seedance/video',
+      },
+    })
+
+    await processor!(job)
+
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledTimes(1)
+    const firstUpdateCall = prismaMock.novelPromotionPanel.updateMany.mock.calls.at(0) as [{
+      data: {
+        videoUrl: string | null
+        videoGenerationMode: string | null
+        videoCandidates: string | null
+      }
+    }] | undefined
+    expect(firstUpdateCall).toBeDefined()
+    const updateArgs = firstUpdateCall![0]
+    expect(updateArgs.data.videoUrl).toBe('cos/base-video.mp4')
+    expect(updateArgs.data.videoGenerationMode).toBe('normal')
+    const serialized = updateArgs.data.videoCandidates as string
+    const candidates = JSON.parse(serialized) as Array<{ videoUrl: string }>
+    expect(candidates).toHaveLength(2)
+    expect(candidates.map((candidate) => candidate.videoUrl)).toEqual([
+      'cos/base-video.mp4',
+      'cos/lip-sync/video.mp4',
+    ])
+  })
+
+  it('submits edit-video generation from the selected source candidate and stores lineage metadata', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default' },
+        ]),
+        videoCandidates: JSON.stringify([
+          {
+            id: 'source',
+            videoUrl: 'cos/base-video.mp4',
+            generationMode: 'normal',
+            createdAt: '2026-04-08T00:00:00.000Z',
+          },
+        ]),
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [],
+      props: [],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'grok::grok-imagine-video',
+        referenceSelection: {
+          includeCharacters: true,
+        },
+        videoOperation: {
+          mode: 'edit',
+          sourceCandidateId: 'source',
+          instruction: 'make the camera drift left',
+        },
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        modelId: 'grok::grok-imagine-video',
+        videoUrl: 'https://signed.example/cos/base-video.mp4',
+        options: expect.objectContaining({
+          prompt: expect.stringContaining('make the camera drift left'),
+          generationMode: 'edit',
+        }),
+      }),
+    )
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls.at(-1)?.[1] as {
+      referenceImages?: string[]
+      options?: { prompt?: string }
+    } | undefined
+    expect(generationCall?.referenceImages).toBeUndefined()
+    expect(generationCall?.options?.prompt).toContain('Character references:')
+
+    const updateArgs = (prismaMock.novelPromotionPanel.updateMany.mock.calls as Array<Array<{
+      data?: {
+        videoCandidates?: string | null
+      }
+    }>>).at(-1)?.[0]
+    const candidates = JSON.parse(String(updateArgs?.data?.videoCandidates)) as Array<{
+      generationMode: string
+      meta?: { sourceCandidateId?: string | null; sourceGenerationMode?: string | null }
+    }>
+    expect(candidates.at(-1)).toEqual(expect.objectContaining({
+      generationMode: 'edit',
+      meta: {
+        sourceCandidateId: 'source',
+        sourceGenerationMode: 'normal',
+      },
+    }))
+  })
+
+  it('rejects Grok edit requests when the source video exceeds the documented duration limit', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        duration: 5,
+        videoCandidates: JSON.stringify([
+          {
+            id: 'base',
+            videoUrl: 'cos/base-video.mp4',
+            generationMode: 'normal',
+            createdAt: '2026-04-08T00:00:00.000Z',
+          },
+          {
+            id: 'extended',
+            videoUrl: 'cos/extended-video.mp4',
+            generationMode: 'extend',
+            createdAt: '2026-04-09T00:00:00.000Z',
+            meta: {
+              sourceCandidateId: 'base',
+              sourceGenerationMode: 'normal',
+              extendDuration: 4,
+            },
+          },
+        ]),
+      }),
+    )
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'grok::grok-imagine-video',
+        videoOperation: {
+          mode: 'edit',
+          sourceCandidateId: 'extended',
+          instruction: 'tighten the motion',
+        },
+      },
+    })
+
+    await expect(processor!(job)).rejects.toThrow('GROK_VIDEO_EDIT_SOURCE_DURATION_UNSUPPORTED')
+    expect(utilsMock.resolveVideoSourceFromGeneration).not.toHaveBeenCalled()
+  })
+
+  it('fails when the lip-sync panel is missing', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -238,7 +780,7 @@ describe('worker video processor behavior', () => {
     await expect(processor!(job)).rejects.toThrow('Lip-sync panel not found')
   })
 
-  it('LIP_SYNC: 正常路径写回 lipSyncVideoUrl 并清理 lipSyncTaskId', async () => {
+  it('persists lip-sync video output and clears lipSyncTaskId', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -277,7 +819,7 @@ describe('worker video processor behavior', () => {
     })
   })
 
-  it('未知任务类型: 显式报错', async () => {
+  it('throws for unsupported task types', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 

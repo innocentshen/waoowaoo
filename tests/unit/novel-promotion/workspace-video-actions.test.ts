@@ -68,4 +68,47 @@ describe('useWorkspaceVideoActions', () => {
 
     expect(globalThis.alert).toHaveBeenCalledWith('execution.generationFailed: video submit failed')
   })
+
+  it('forwards selected related-asset reference flags to the video mutation', async () => {
+    generateVideoMutateAsyncMock.mockResolvedValueOnce({ success: true })
+
+    const actions = useWorkspaceVideoActions({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      t: (key: string) => key,
+    })
+
+    await actions.handleGenerateVideo(
+      'storyboard-1',
+      0,
+      'veo-3.1',
+      undefined,
+      { duration: 5 },
+      undefined,
+      {
+        includeCharacters: true,
+        includeLocation: false,
+        includeProps: true,
+        characters: [{ name: 'Hero', appearance: 'default' }],
+        props: ['Ancient Sword'],
+      },
+      'panel-1',
+      2,
+    )
+
+    expect(generateVideoMutateAsyncMock).toHaveBeenCalledWith(expect.objectContaining({
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      panelId: 'panel-1',
+      videoModel: 'veo-3.1',
+      count: 2,
+      referenceSelection: {
+        includeCharacters: true,
+        includeLocation: false,
+        includeProps: true,
+        characters: [{ name: 'Hero', appearance: 'default' }],
+        props: ['Ancient Sword'],
+      },
+    }))
+  })
 })

@@ -10,6 +10,7 @@ import { hasPanelImageOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
 import { sanitizeImageInputsForTaskPayload } from '@/lib/media/outbound-image'
+import { getGrokEditInputImageLimitExceededMessage } from '@/lib/providers/grok/edit-input-limit'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -99,6 +100,20 @@ export const POST = apiHandler(async (
 
   const projectModelConfig = await getProjectModelConfig(projectId, session.user.id)
   const imageModel = projectModelConfig.editModel
+  const selectedAssetImageUrls = normalizedSelectedAssets
+    .map((asset: unknown) => (asset && typeof asset === 'object' ? (asset as Record<string, unknown>).imageUrl : null))
+    .filter((url: unknown): url is string => typeof url === 'string' && url.trim().length > 0)
+  const uniqueExtraInputs = new Set<string>([
+    ...selectedAssetImageUrls,
+    ...extraImageAudit.normalized,
+  ])
+  const grokLimitError = getGrokEditInputImageLimitExceededMessage(imageModel || '', 1 + uniqueExtraInputs.size)
+  if (grokLimitError) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'GROK_EDIT_INPUT_IMAGE_LIMIT_EXCEEDED',
+      message: grokLimitError,
+    })
+  }
 
   let billingPayload: Record<string, unknown>
   try {

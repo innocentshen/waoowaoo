@@ -4,7 +4,12 @@ import { useMemo } from 'react'
 import type { WorkspaceStageRuntimeValue } from '../WorkspaceStageRuntimeContext'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
-import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
+import type {
+  BatchVideoGenerationParams,
+  VideoGenerationOptions,
+  VideoOperationRequest,
+  VideoReferenceSelection,
+} from '../components/video'
 
 interface UseWorkspaceStageRuntimeParams {
   assetsLoading: boolean
@@ -44,7 +49,10 @@ interface UseWorkspaceStageRuntimeParams {
       customPrompt?: string
     },
     generationOptions?: VideoGenerationOptions,
+    videoOperation?: VideoOperationRequest,
+    referenceSelection?: VideoReferenceSelection,
     panelId?: string,
+    count?: number,
   ) => Promise<void>
   handleGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   handleUpdateVideoPrompt: (
@@ -99,6 +107,7 @@ export function useWorkspaceStageRuntime({
     capabilityOverrides,
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
+    onUpdateProjectConfig: handleUpdateConfig,
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
     onArtStyleChange: (value) => handleUpdateConfig('artStyle', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),

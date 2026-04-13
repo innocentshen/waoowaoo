@@ -129,23 +129,55 @@ export function useStoryboardTaskAwareStoryboards({
   )
 
   const taskAwareStoryboards = useMemo(() => {
-    return initialStoryboards.map((storyboard) => ({
-      ...storyboard,
-      storyboardTaskRunning:
+    return initialStoryboards.map((storyboard) => {
+      const storyboardTaskRunning =
         isRunningPhase(storyboardTextStates.getTaskState(`storyboard:${storyboard.id}`)?.phase) ||
-        isRunningPhase(storyboardTextStates.getTaskState(`episode:${storyboard.episodeId}`)?.phase),
-      panels: (storyboard.panels || []).map((panel) => {
+        isRunningPhase(storyboardTextStates.getTaskState(`episode:${storyboard.episodeId}`)?.phase)
+
+      const nextPanels = (storyboard.panels || []).map((panel) => {
+        const panelRuntime = panel as typeof panel & {
+          imageTaskIntent?: string
+          lipSyncTaskRunning?: boolean
+        }
         const panelImageTaskState = panelImageStates.getTaskState(`panel-image:${panel.id}`)
         const panelImageRunning = isRunningPhase(panelImageTaskState?.phase)
+
+        const imageTaskIntent = panelImageTaskState?.intent
+        const videoTaskRunning = isRunningPhase(panelVideoStates.getTaskState(`panel-video:${panel.id}`)?.phase)
+        const lipSyncTaskRunning = isRunningPhase(panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)?.phase)
+
+        if (
+          panel.imageTaskRunning === panelImageRunning &&
+          panelRuntime.imageTaskIntent === imageTaskIntent &&
+          panel.videoTaskRunning === videoTaskRunning &&
+          panelRuntime.lipSyncTaskRunning === lipSyncTaskRunning
+        ) {
+          return panel
+        }
+
         return {
           ...panel,
           imageTaskRunning: panelImageRunning,
-          imageTaskIntent: panelImageTaskState?.intent,
-          videoTaskRunning: isRunningPhase(panelVideoStates.getTaskState(`panel-video:${panel.id}`)?.phase),
-          lipSyncTaskRunning: isRunningPhase(panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)?.phase),
+          imageTaskIntent,
+          videoTaskRunning,
+          lipSyncTaskRunning,
         }
-      }),
-    }))
+      })
+
+      const panelsUnchanged = nextPanels.every((panel, index) => panel === (storyboard.panels || [])[index])
+      if (
+        storyboard.storyboardTaskRunning === storyboardTaskRunning &&
+        panelsUnchanged
+      ) {
+        return storyboard
+      }
+
+      return {
+        ...storyboard,
+        storyboardTaskRunning,
+        panels: nextPanels,
+      }
+    })
   }, [
     initialStoryboards,
     isRunningPhase,

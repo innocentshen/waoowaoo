@@ -47,6 +47,30 @@ describe('normalizeAnyError provider-specific mapping', () => {
     expect(normalized.retryable).toBe(true)
   })
 
+  it('maps raw 502 html gateway pages to EXTERNAL_ERROR and strips html from the message', () => {
+    const normalized = normalizeAnyError(
+      new Error('502 <!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>GATEWAY_ERROR Origin server error</body></html>'),
+    )
+    expect(normalized.code).toBe('EXTERNAL_ERROR')
+    expect(normalized.retryable).toBe(true)
+    expect(normalized.message).toBe('External service failed')
+  })
+
+  it('maps provider invalid json responses to EXTERNAL_ERROR and hides the raw sentinel', () => {
+    const normalized = normalizeAnyError(new Error('GROK_VIDEO_RESPONSE_INVALID_JSON'))
+    expect(normalized.code).toBe('EXTERNAL_ERROR')
+    expect(normalized.retryable).toBe(true)
+    expect(normalized.message).toBe('External service failed')
+  })
+
+  it('maps Grok edit source duration limit errors to INVALID_PARAMS', () => {
+    const normalized = normalizeAnyError(
+      new Error('GROK_VIDEO_EDIT_SOURCE_DURATION_UNSUPPORTED: source video is 9s, but Grok video edit supports up to 8.7s'),
+    )
+    expect(normalized.code).toBe('INVALID_PARAMS')
+    expect(normalized.retryable).toBe(false)
+  })
+
   it('maps openai-compatible video template mismatch to VIDEO_API_FORMAT_UNSUPPORTED', () => {
     const normalized = normalizeAnyError(
       new Error('VIDEO_API_FORMAT_UNSUPPORTED: OPENAI_COMPAT_VIDEO_TEMPLATE_TASK_ID_NOT_FOUND'),

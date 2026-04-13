@@ -106,6 +106,14 @@ describe('llm chatCompletionStream openai-compatible protocol routing', () => {
     )
 
     expect(runOpenAICompatResponsesCompletionMock).toHaveBeenCalledTimes(1)
+    expect(runOpenAICompatResponsesCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      providerId: 'openai-compatible:node-1',
+      modelId: 'gpt-4.1-mini',
+      temperature: 0.2,
+      reasoning: true,
+      reasoningEffort: 'high',
+    }))
     expect(runOpenAICompatChatCompletionMock).not.toHaveBeenCalled()
     expect(completion.choices[0]?.message?.content).toBe('responses-stream')
     expect(onChunk).toHaveBeenCalled()
@@ -128,8 +136,40 @@ describe('llm chatCompletionStream openai-compatible protocol routing', () => {
     )
 
     expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      providerId: 'openai-compatible:node-1',
+      modelId: 'gpt-4.1-mini',
+      temperature: 0.2,
+      reasoning: true,
+      reasoningEffort: 'high',
+    }))
     expect(runOpenAICompatResponsesCompletionMock).not.toHaveBeenCalled()
     expect(completion.choices[0]?.message?.content).toBe('chat-stream')
+  })
+
+  it('forwards extra-high reasoning effort for GPT-5.4 chat-completions models', async () => {
+    resolveLlmRuntimeModelMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:node-1',
+      modelId: 'gpt-5.4',
+      modelKey: 'openai-compatible:node-1::gpt-5.4',
+      llmProtocol: 'chat-completions',
+    })
+
+    await chatCompletionStream(
+      'user-1',
+      'openai-compatible:node-1::gpt-5.4',
+      [{ role: 'user', content: 'hello' }],
+      { temperature: 0.2, reasoning: true, reasoningEffort: 'xhigh' },
+      undefined,
+    )
+
+    expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'gpt-5.4',
+      temperature: 0.2,
+      reasoning: true,
+      reasoningEffort: 'xhigh',
+    }))
   })
 
   it('fails fast when llmProtocol is missing for openai-compatible model', async () => {

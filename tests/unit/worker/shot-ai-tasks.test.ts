@@ -5,14 +5,18 @@ import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 const handlersMock = vi.hoisted(() => ({
   handleModifyAppearanceTask: vi.fn(),
   handleModifyLocationTask: vi.fn(),
+  handleModifyPropTask: vi.fn(),
   handleModifyShotPromptTask: vi.fn(),
+  handleGeneratePanelVideoPromptTask: vi.fn(),
   handleAnalyzeShotVariantsTask: vi.fn(),
 }))
 
 vi.mock('@/lib/workers/handlers/shot-ai-prompt', () => ({
   handleModifyAppearanceTask: handlersMock.handleModifyAppearanceTask,
   handleModifyLocationTask: handlersMock.handleModifyLocationTask,
+  handleModifyPropTask: handlersMock.handleModifyPropTask,
   handleModifyShotPromptTask: handlersMock.handleModifyShotPromptTask,
+  handleGeneratePanelVideoPromptTask: handlersMock.handleGeneratePanelVideoPromptTask,
 }))
 
 vi.mock('@/lib/workers/handlers/shot-ai-variants', () => ({
@@ -42,7 +46,9 @@ describe('worker shot-ai-tasks behavior', () => {
     vi.clearAllMocks()
     handlersMock.handleModifyAppearanceTask.mockResolvedValue({ type: 'appearance' })
     handlersMock.handleModifyLocationTask.mockResolvedValue({ type: 'location' })
+    handlersMock.handleModifyPropTask.mockResolvedValue({ type: 'prop' })
     handlersMock.handleModifyShotPromptTask.mockResolvedValue({ type: 'shot-prompt' })
+    handlersMock.handleGeneratePanelVideoPromptTask.mockResolvedValue({ type: 'video-prompt' })
     handlersMock.handleAnalyzeShotVariantsTask.mockResolvedValue({ type: 'variants' })
   })
 
@@ -66,6 +72,12 @@ describe('worker shot-ai-tasks behavior', () => {
     const shotJob = buildJob(TASK_TYPE.AI_MODIFY_SHOT_PROMPT, shotPayload)
     await handleShotAITask(shotJob)
     expect(handlersMock.handleModifyShotPromptTask).toHaveBeenCalledWith(shotJob, shotPayload)
+    expect(handlersMock.handleGeneratePanelVideoPromptTask).not.toHaveBeenCalled()
+
+    const videoPromptPayload = { mode: 'videoPrompt', panelId: 'panel-1', modifyInstruction: 'make timing more explicit' }
+    const videoPromptJob = buildJob(TASK_TYPE.AI_MODIFY_SHOT_PROMPT, videoPromptPayload)
+    await handleShotAITask(videoPromptJob)
+    expect(handlersMock.handleGeneratePanelVideoPromptTask).toHaveBeenCalledWith(videoPromptJob, videoPromptPayload)
 
     const variantPayload = { panelId: 'panel-1' }
     const variantJob = buildJob(TASK_TYPE.ANALYZE_SHOT_VARIANTS, variantPayload)

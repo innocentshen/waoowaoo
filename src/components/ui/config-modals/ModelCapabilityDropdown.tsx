@@ -14,6 +14,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
 import type { CapabilityValue } from '@/lib/model-config-contract'
+import { resolvePreferredCapabilityDefault } from '@/lib/model-capabilities/defaults'
 import { AppIcon, RatioPreviewIcon } from '@/components/ui/icons'
 
 // ─── Types ────────────────────────────────────────────
@@ -203,26 +204,32 @@ export function ModelCapabilityDropdown({
     const visibleCapabilityFields = capabilityFields.filter((field) => field.field !== 'generationMode')
 
     const resolveCapabilityLabel = useCallback((field: CapabilityFieldDefinition): string => {
-        try {
+        if (tv.has(`capability.${field.field}`)) {
             return tv(`capability.${field.field}` as never)
-        } catch {
-            return field.label
         }
+        return field.label
     }, [tv])
 
     /** Format option value for display — converts booleans to localized On/Off */
     const formatOptionLabel = useCallback((val: CapabilityValue): string => {
         if (val === true || val === 'true') return t('boolOn')
         if (val === false || val === 'false') return t('boolOff')
+        if (typeof val === 'string') {
+            if (t.has(`capabilityOption.${val}`)) {
+                return t(`capabilityOption.${val}` as never)
+            }
+            return val
+        }
         return String(val)
     }, [t])
 
     // Build summary text from capability overrides + defaults
     const paramSummary = visibleCapabilityFields
         .map((def) => {
+            const fallbackOption = resolvePreferredCapabilityDefault(def.field, def.options)
             const val = capabilityOverrides[def.field] !== undefined
                 ? capabilityOverrides[def.field]
-                : (def.options.length > 0 ? def.options[0] : '')
+                : (fallbackOption ?? '')
             return formatOptionLabel(val)
         })
         .concat(
@@ -348,8 +355,8 @@ export function ModelCapabilityDropdown({
                                                 : ''
                                             const isR = isRatioLike(def.field, def.options)
                                             const useSelect = shouldUseSelectControl(def.field, def.options)
-                                            const fallbackOption = def.options[0]
-                                            const selectValue = currentVal || String(fallbackOption)
+                                            const fallbackOption = resolvePreferredCapabilityDefault(def.field, def.options)
+                                            const selectValue = currentVal || String(fallbackOption ?? '')
 
                                             return (
                                                 <div key={def.field} className="flex items-center justify-between gap-3">
@@ -359,17 +366,17 @@ export function ModelCapabilityDropdown({
                                                     {def.options.length === 1 ? (
                                                         <span className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-[var(--glass-bg-surface-strong)] border border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)] flex items-center gap-1">
                                                             {(() => {
-                                                                const ratioValue = String(def.options[0])
+                                                                const ratioValue = String(fallbackOption ?? def.options[0])
                                                                 return isR && isValidRatioText(ratioValue) ? <RatioIcon ratio={ratioValue} size={10} /> : null
                                                             })()}
-                                                            {formatOptionLabel(def.options[0])}
+                                                            {formatOptionLabel(fallbackOption ?? def.options[0])}
                                                             <span className="text-[var(--glass-text-tertiary)] text-[10px]">({t('fixed')})</span>
                                                         </span>
                                                     ) : useSelect ? (
                                                         <div className="relative group">
                                                             <select
                                                                 value={selectValue}
-                                                                onChange={(event) => onCapabilityChange(def.field, event.target.value, def.options[0])}
+                                                                onChange={(event) => onCapabilityChange(def.field, event.target.value, fallbackOption ?? def.options[0])}
                                                                 className="appearance-none bg-transparent hover:bg-[#f2f2f7] dark:hover:bg-[#1c1c1e] text-[13px] font-bold text-[var(--glass-text-primary)] pl-3 pr-7 py-1 rounded-md transition-colors outline-none cursor-pointer border border-transparent"
                                                             >
                                                                 {def.options.map((opt) => {
@@ -385,15 +392,17 @@ export function ModelCapabilityDropdown({
                                                         </div>
                                                     ) : (
                                                         <div className="flex bg-[#f2f2f7] dark:bg-[#1c1c1e] p-[3px] rounded-lg shadow-inner">
-                                                            {def.options.map((opt) => {
-                                                                const s = String(opt)
-                                                                const disabled = isOptionDisabled(def, opt)
-                                                                const on = currentVal ? s === currentVal : s === String(fallbackOption)
-                                                                return (
+                                                                {def.options.map((opt) => {
+                                                                    const s = String(opt)
+                                                                    const disabled = isOptionDisabled(def, opt)
+                                                                    const on = currentVal
+                                                                        ? s === currentVal
+                                                                        : s === String(fallbackOption ?? def.options[0])
+                                                                    return (
                                                                     <button
                                                                         key={s}
                                                                         type="button"
-                                                                        onClick={() => onCapabilityChange(def.field, s, def.options[0])}
+                                                                        onClick={() => onCapabilityChange(def.field, s, fallbackOption ?? def.options[0])}
                                                                         className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-all flex items-center gap-1 cursor-pointer ${on
                                                                             ? 'bg-white text-black dark:bg-[#2c2c2e] dark:text-white shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] font-bold'
                                                                             : disabled

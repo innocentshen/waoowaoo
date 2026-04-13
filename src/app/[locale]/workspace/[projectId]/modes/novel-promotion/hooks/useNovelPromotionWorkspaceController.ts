@@ -62,7 +62,6 @@ export function useNovelPromotionWorkspaceController({
   const [isWorldContextModalOpen, setIsWorldContextModalOpen] = useState(false)
 
   const assetLibrary = useWorkspaceAssetLibraryShell({
-    currentStage,
     searchParams,
     router,
     onRefresh,

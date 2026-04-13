@@ -130,6 +130,8 @@ export async function chatCompletion(
             modelId: resolvedModelId,
             messages,
             temperature,
+            reasoning,
+            reasoningEffort,
           })
           : await runOpenAICompatChatCompletion({
             userId,
@@ -137,6 +139,8 @@ export async function chatCompletion(
             modelId: resolvedModelId,
             messages,
             temperature,
+            reasoning,
+            reasoningEffort,
           })
         const completionParts = getCompletionParts(completion)
         const compatEngine = selection.llmProtocol === 'responses'

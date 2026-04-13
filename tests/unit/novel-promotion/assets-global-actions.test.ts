@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isGlobalAnalyzeTaskRunning,
   resolveGlobalAnalyzeCompletion,
+  shouldResumeGlobalAnalyzeFromTaskSnapshot,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/hooks/useAssetsGlobalActions'
 
 describe('assets global actions task state helpers', () => {
@@ -56,5 +57,21 @@ describe('assets global actions task state helpers', () => {
       finishedTaskId: 'task-3',
       errorMessage: 'No model configured',
     })
+  })
+
+  it('restores running state when task snapshot is still queued or processing', () => {
+    expect(shouldResumeGlobalAnalyzeFromTaskSnapshot({
+      status: 'queued',
+    })).toBe(true)
+
+    expect(shouldResumeGlobalAnalyzeFromTaskSnapshot({
+      status: 'processing',
+    })).toBe(true)
+
+    expect(shouldResumeGlobalAnalyzeFromTaskSnapshot({
+      status: 'completed',
+    })).toBe(false)
+
+    expect(shouldResumeGlobalAnalyzeFromTaskSnapshot(null)).toBe(false)
   })
 })

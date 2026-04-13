@@ -3,7 +3,10 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
+import GlassModalShell from '@/components/ui/primitives/GlassModalShell'
+import { getVideoGenerationCountOptions } from '@/lib/video-generation/count'
 import type { VideoPanelRuntime } from './hooks/useVideoPanelActions'
+import VideoReferenceSelector from '../VideoReferenceSelector'
 
 interface VideoPanelCardBodyProps {
   runtime: VideoPanelRuntime
@@ -24,6 +27,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     voiceManager,
     lipSync,
     computed,
+    candidates,
   } = runtime
   const safeTranslate = (key: string | undefined, fallback = ''): string => {
     if (!key) return fallback
@@ -50,6 +54,16 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   const showsOutgoingLinkBadge = layout.isLinked && !!layout.nextPanel
   const showsPromptEditor = !layout.isLastFrame || layout.isLinked
   const showsFirstLastFrameActions = layout.isLinked && !!layout.nextPanel
+  const referenceSelection = actions.referenceSelection || {}
+
+  const renderReferenceSelectionControls = () => (
+    <VideoReferenceSelector
+      t={t as (key: string, values?: Record<string, unknown>) => string}
+      selection={referenceSelection}
+      options={actions.referenceOptions}
+      onChange={(nextSelection) => actions.onUpdateReferenceSelection(panelKey, nextSelection)}
+    />
+  )
 
   return (
     <div className="p-4 space-y-2">
@@ -87,11 +101,33 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
           <>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-[var(--glass-text-tertiary)]">{t('promptModal.promptLabel')}</span>
-              {!promptEditor.isEditing && (
-                <button onClick={promptEditor.handleStartEdit} className="text-[var(--glass-text-tertiary)] hover:text-[var(--glass-tone-info-fg)] transition-colors p-0.5">
-                  <AppIcon name="edit" className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <div className="flex items-center gap-1">
+                {promptEditor.canAiGeneratePrompt && (
+                  <button
+                    type="button"
+                    onClick={promptEditor.handleOpenAiModal}
+                    disabled={promptEditor.isAiBusy || promptEditor.isSavingPrompt}
+                    title={t('panelCard.aiGeneratePrompt')}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--glass-stroke-focus)]/50 bg-[linear-gradient(135deg,rgba(59,130,246,0.95),rgba(124,58,237,0.92))] text-white shadow-[0_6px_16px_rgba(59,130,246,0.28)] transition-transform hover:scale-[1.04] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <AppIcon name={promptEditor.isAiBusy ? 'loader' : 'sparkles'} className={`w-3.5 h-3.5 ${promptEditor.isAiBusy ? 'animate-spin' : ''}`} />
+                    </button>
+                )}
+                {!promptEditor.isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => { void promptEditor.handleQuickOptimize() }}
+                    disabled={!promptEditor.canQuickOptimize || promptEditor.isAiBusy || promptEditor.isSavingPrompt}
+                    title={t('panelCard.optimizePrompt')}
+                    className="text-[var(--glass-text-tertiary)] hover:text-[var(--glass-tone-info-fg)] transition-colors p-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <AppIcon
+                      name={promptEditor.isQuickOptimizing ? 'loader' : 'sparklesAlt'}
+                      className={`w-3.5 h-3.5 ${promptEditor.isQuickOptimizing ? 'animate-spin' : ''}`}
+                    />
+                  </button>
+                )}
+              </div>
             </div>
 
             {promptEditor.isEditing ? (
@@ -100,47 +136,155 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                   value={promptEditor.editingPrompt}
                   onChange={(event) => promptEditor.setEditingPrompt(event.target.value)}
                   autoFocus
-                  className="w-full text-xs p-2 pr-16 border border-[var(--glass-stroke-focus)] rounded-lg bg-[var(--glass-bg-surface)] text-[var(--glass-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--glass-tone-info-fg)] resize-none"
-                  rows={3}
+                  className="app-scrollbar w-full min-h-[3.5rem] max-h-[7.25rem] resize-none overflow-y-auto rounded-lg border border-[var(--glass-stroke-focus)] bg-[var(--glass-bg-surface)] p-2 pr-16 text-[13px] leading-5 text-[var(--glass-text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--glass-tone-info-fg)]"
+                  rows={2}
                   placeholder={t('promptModal.placeholder')}
+                  disabled={promptEditor.isAiBusy}
                 />
                 <div className="absolute right-1 top-1 flex flex-col gap-1">
                   <button onClick={promptEditor.handleSave} disabled={promptEditor.isSavingPrompt} className="px-2 py-1 text-[10px] bg-[var(--glass-accent-from)] text-white rounded">{promptEditor.isSavingPrompt ? '...' : t('panelCard.save')}</button>
-                  <button onClick={promptEditor.handleCancelEdit} disabled={promptEditor.isSavingPrompt} className="px-2 py-1 text-[10px] bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] rounded">{t('panelCard.cancel')}</button>
+                  <button onClick={promptEditor.handleCancelEdit} disabled={promptEditor.isSavingPrompt || promptEditor.isAiBusy} className="px-2 py-1 text-[10px] bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] rounded">{t('panelCard.cancel')}</button>
                 </div>
               </div>
             ) : (
-              <div onClick={promptEditor.handleStartEdit} className="text-xs p-2 border border-[var(--glass-stroke-base)] rounded-lg bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] cursor-pointer">
+              <div onClick={promptEditor.isAiBusy ? undefined : promptEditor.handleStartEdit} className={`app-scrollbar min-h-[3.5rem] max-h-[7.25rem] overflow-y-auto whitespace-pre-wrap rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-2 text-[13px] leading-5 text-[var(--glass-text-secondary)] ${promptEditor.isAiBusy ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                 {promptEditor.localPrompt || <span className="text-[var(--glass-text-tertiary)] italic">{t('panelCard.clickToEditPrompt')}</span>}
               </div>
+            )}
+
+            {promptEditor.canAiGeneratePrompt && (
+              <GlassModalShell
+                open={promptEditor.isAiModalOpen}
+                onClose={promptEditor.handleCloseAiModal}
+                title={t('promptModal.aiGenerateTitle')}
+                description={t('promptModal.aiGenerateDescription')}
+                size="md"
+                footer={(
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={promptEditor.handleCloseAiModal}
+                      disabled={promptEditor.isAiBusy}
+                      className="glass-btn-base glass-btn-secondary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t('panelCard.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void promptEditor.handleAiGenerate() }}
+                      disabled={promptEditor.isAiBusy || !promptEditor.aiInstruction.trim()}
+                      className="glass-btn-base glass-btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {promptEditor.isAiGenerating ? (
+                        <>
+                          <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                          <span>{t('panelCard.generating')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AppIcon name="sparkles" className="w-4 h-4" />
+                          <span>{t('promptModal.aiGenerateAction')}</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void promptEditor.handleApplyAiPrompt() }}
+                      disabled={promptEditor.isAiBusy || !promptEditor.aiDraftPrompt.trim()}
+                      className="glass-btn-base glass-btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {promptEditor.isAiApplying ? (
+                        <>
+                          <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                          <span>{t('panelCard.save')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AppIcon name="edit" className="w-4 h-4" />
+                          <span>{t('promptModal.applyPromptAction')}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-[var(--glass-text-tertiary)]">
+                      {t('promptModal.aiInstructionLabel')}
+                    </label>
+                    <textarea
+                      value={promptEditor.aiInstruction}
+                      onChange={(event) => promptEditor.setAiInstruction(event.target.value)}
+                      placeholder={t('promptModal.aiGeneratePlaceholder')}
+                      className="glass-textarea-base app-scrollbar h-28 w-full resize-none px-4 py-3 text-sm"
+                      disabled={promptEditor.isAiBusy}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="block text-xs font-medium text-[var(--glass-text-tertiary)]">
+                        {t('promptModal.aiResultLabel')}
+                      </label>
+                      <span className="text-[11px] text-[var(--glass-text-tertiary)]">
+                        {t('promptModal.aiResultHint')}
+                      </span>
+                    </div>
+                    <textarea
+                      value={promptEditor.aiDraftPrompt}
+                      onChange={(event) => promptEditor.setAiDraftPrompt(event.target.value)}
+                      placeholder={t('promptModal.aiResultPlaceholder')}
+                      className="glass-textarea-base app-scrollbar h-40 w-full resize-none px-4 py-3 text-sm"
+                      disabled={promptEditor.isAiBusy}
+                    />
+                  </div>
+                </div>
+              </GlassModalShell>
             )}
 
             {showsFirstLastFrameActions ? (() => {
               const linkedNextPanel = layout.nextPanel!
               return (
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    onClick={() => actions.onGenerateFirstLastFrame(
-                      panel.storyboardId,
-                      panel.panelIndex,
-                      linkedNextPanel.storyboardId,
-                      linkedNextPanel.panelIndex,
-                      panelKey,
-                      layout.flGenerationOptions,
-                      panel.panelId,
-                    )}
-                    disabled={
-                      taskStatus.isVideoTaskRunning
-                      || !panel.imageUrl
-                      || !linkedNextPanel.imageUrl
-                      || !layout.flModel
-                      || layout.flMissingCapabilityFields.length > 0
-                    }
-                    className="flex-shrink-0 min-w-[120px] py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
-                  >
-                    {isFirstLastFrameGenerated ? t('firstLastFrame.generated') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('firstLastFrame.generate')}
-                  </button>
-                  <div className="flex-1 min-w-0">
+                <div className="mt-2 space-y-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                    <button
+                      onClick={() => actions.onGenerateFirstLastFrame(
+                        panel.storyboardId,
+                        panel.panelIndex,
+                        linkedNextPanel.storyboardId,
+                        linkedNextPanel.panelIndex,
+                        panelKey,
+                        layout.flGenerationOptions,
+                        actions.referenceSelection,
+                        panel.panelId,
+                        candidates.videoGenerationCount,
+                      )}
+                      disabled={
+                        taskStatus.isVideoTaskRunning
+                        || !panel.imageUrl
+                        || !linkedNextPanel.imageUrl
+                        || !layout.flModel
+                        || layout.flMissingCapabilityFields.length > 0
+                      }
+                      className="w-full py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
+                    >
+                      {isFirstLastFrameGenerated ? t('firstLastFrame.generated') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('firstLastFrame.generate')}
+                    </button>
+                    <select
+                      value={String(candidates.videoGenerationCount)}
+                      onChange={(event) => candidates.onVideoGenerationCountChange(Number(event.target.value))}
+                      className="glass-select-base w-full rounded-lg px-2 py-2 text-xs"
+                      aria-label={t('panelCard.videoCountLabel')}
+                    >
+                      {getVideoGenerationCountOptions().map((option) => (
+                        <option key={option} value={option}>
+                          {t('panelCard.videoCountOption', { count: option })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
                     <ModelCapabilityDropdown
                       compact
                       models={layout.flModelOptions}
@@ -157,39 +301,55 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       placeholder={t('panelCard.selectModel')}
                     />
                   </div>
+                  {renderReferenceSelectionControls()}
                 </div>
               )
             })() : (
               <>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      actions.onGenerateVideo(
-                        panel.storyboardId,
-                        panel.panelIndex,
-                        videoModel.selectedModel,
-                        undefined,
-                        videoModel.generationOptions,
-                        panel.panelId,
-                      )}
-                    disabled={
-                      taskStatus.isVideoTaskRunning
-                      || !panel.imageUrl
-                      || !videoModel.selectedModel
-                      || videoModel.missingCapabilityFields.length > 0
-                    }
-                    className="flex-shrink-0 min-w-[90px] py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
-                  >
-                    {panel.videoUrl ? t('stage.hasSynced') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('panelCard.generateVideo')}
-                  </button>
-                  <div className="flex-1 min-w-0">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                    <button
+                      onClick={() =>
+                        actions.onGenerateVideo(
+                          panel.storyboardId,
+                          panel.panelIndex,
+                          videoModel.selectedModel,
+                          undefined,
+                          videoModel.generationOptions,
+                          undefined,
+                          actions.referenceSelection,
+                          panel.panelId,
+                          candidates.videoGenerationCount,
+                        )}
+                      disabled={
+                        taskStatus.isVideoTaskRunning
+                        || !panel.imageUrl
+                        || !videoModel.selectedModel
+                        || videoModel.missingCapabilityFields.length > 0
+                      }
+                      className="w-full py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
+                    >
+                      {panel.videoUrl ? t('stage.hasSynced') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('panelCard.generateVideo')}
+                    </button>
+                    <select
+                      value={String(candidates.videoGenerationCount)}
+                      onChange={(event) => candidates.onVideoGenerationCountChange(Number(event.target.value))}
+                      className="glass-select-base w-full rounded-lg px-2 py-2 text-xs"
+                      aria-label={t('panelCard.videoCountLabel')}
+                    >
+                      {getVideoGenerationCountOptions().map((option) => (
+                        <option key={option} value={option}>
+                          {t('panelCard.videoCountOption', { count: option })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
                     <ModelCapabilityDropdown
                       compact
                       models={videoModel.videoModelOptions}
                       value={videoModel.selectedModel || undefined}
-                      onModelChange={(modelKey) => {
-                        videoModel.setSelectedModel(modelKey)
-                      }}
+                      onModelChange={videoModel.handleModelChange}
                       capabilityFields={videoModel.capabilityFields.map((field) => ({
                         field: field.field,
                         label: renderCapabilityLabel(field),
@@ -201,8 +361,8 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       placeholder={t('panelCard.selectModel')}
                     />
                   </div>
+                  {renderReferenceSelectionControls()}
                 </div>
-
                 {computed.showLipSyncSection && (
                   <div className="mt-2">
                     <div className="flex gap-2">

@@ -56,8 +56,10 @@ export interface ImageGenerator {
 
 export interface VideoGenerateParams {
     userId: string
-    imageUrl: string           // 起始图片
+    imageUrl?: string          // 起始图片
+    videoUrl?: string          // 源视频
     prompt?: string            // 提示词（可选）
+    referenceImages?: string[]
     options?: GenerateOptions
 }
 

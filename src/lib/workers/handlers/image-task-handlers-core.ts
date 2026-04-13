@@ -2,6 +2,7 @@ import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
+import { getProviderKey } from '@/lib/api-config'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import {
   assertTaskActive,
@@ -15,6 +16,7 @@ import {
 } from '../utils'
 import {
   normalizeReferenceImagesForGeneration,
+  normalizeReferenceImagesForOriginalMedia,
   normalizeToBase64ForGeneration,
 } from '@/lib/media/outbound-image'
 import {
@@ -35,6 +37,17 @@ import {
 } from './modify-description-sync'
 
 const logger = createScopedLogger({ module: 'worker.modify-asset-image' })
+
+function shouldUseOriginalMediaReferences(modelKey: string, extraReferenceCount: number): boolean {
+  return extraReferenceCount > 0 && getProviderKey(modelKey).toLowerCase() === 'grok'
+}
+
+async function normalizeEditReferenceExtras(modelKey: string, inputs: string[]): Promise<string[]> {
+  if (shouldUseOriginalMediaReferences(modelKey, inputs.length)) {
+    return await normalizeReferenceImagesForOriginalMedia(inputs)
+  }
+  return await normalizeReferenceImagesForGeneration(inputs)
+}
 
 interface LocationImageRecord {
   id: string
@@ -85,7 +98,6 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const currentUrl = toSignedUrlIfCos(currentKey, 3600)
     if (!currentUrl) throw new Error('No image to modify')
 
-    const requiredReference = await stripLabelBar(currentUrl)
     const extraReferenceInputs: string[] = []
     if (Array.isArray(payload.extraImageUrls)) {
       for (const url of payload.extraImageUrls) {
@@ -94,7 +106,9 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
+    const useOriginalReferences = shouldUseOriginalMediaReferences(editModel, extraReferenceInputs.length)
+    const requiredReference = useOriginalReferences ? currentUrl : await stripLabelBar(currentUrl)
+    const normalizedExtras = await normalizeEditReferenceExtras(editModel, extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
     const currentDescription = readIndexedDescription({
       descriptions: appearance.descriptions,
@@ -193,7 +207,6 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const currentUrl = toSignedUrlIfCos(locationImage.imageUrl, 3600)
     if (!currentUrl) throw new Error('No location image url')
 
-    const requiredReference = await stripLabelBar(currentUrl)
     const extraReferenceInputs: string[] = []
     if (Array.isArray(payload.extraImageUrls)) {
       for (const url of payload.extraImageUrls) {
@@ -202,7 +215,9 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
+    const useOriginalReferences = shouldUseOriginalMediaReferences(editModel, extraReferenceInputs.length)
+    const requiredReference = useOriginalReferences ? currentUrl : await stripLabelBar(currentUrl)
+    const normalizedExtras = await normalizeEditReferenceExtras(editModel, extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
     const isProp = type === 'prop'
@@ -311,7 +326,6 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const projectData = await resolveNovelData(job.data.projectId)
     if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
     const aspectRatio = projectData.videoRatio
-    const requiredReference = await normalizeToBase64ForGeneration(currentUrl)
     const extraReferenceInputs: string[] = []
 
     const selectedAssets = Array.isArray(payload.selectedAssets)
@@ -333,7 +347,9 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
       }
     }
 
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
+    const useOriginalReferences = shouldUseOriginalMediaReferences(editModel, extraReferenceInputs.length)
+    const requiredReference = useOriginalReferences ? currentUrl : await normalizeToBase64ForGeneration(currentUrl)
+    const normalizedExtras = await normalizeEditReferenceExtras(editModel, extraReferenceInputs)
     const uniqueReferences = Array.from(new Set([requiredReference, ...normalizedExtras]))
     const prompt = `请根据以下指令修改分镜图片，保持镜头语言和主体一致：\n${modifyPrompt}`
     const source = await resolveImageSourceFromGeneration(job, {

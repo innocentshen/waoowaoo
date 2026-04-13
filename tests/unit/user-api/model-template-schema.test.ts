@@ -194,6 +194,36 @@ describe('user-api model template schema', () => {
     expect(result.template?.create.multipartFileFields).toEqual(['input_reference'])
   })
 
+  it('accepts grok2api video placeholders such as quality', () => {
+    const result = validateOpenAICompatMediaTemplate({
+      version: 1,
+      mediaType: 'video',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          quality: '{{quality}}',
+          input_reference: '{{image}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.url',
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.template?.create.bodyTemplate).toMatchObject({
+      quality: '{{quality}}',
+    })
+  })
+
   it('rejects multipart file fields that are not present in bodyTemplate', () => {
     const result = validateOpenAICompatMediaTemplate({
       version: 1,

@@ -17,6 +17,7 @@ import {
 } from './screenplay-convert-helpers'
 import { getPromptTemplate, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 const MAX_SCREENPLAY_ATTEMPTS = 2
 
@@ -28,13 +29,7 @@ export async function handleScreenplayConvertTask(job: Job<TaskJobData>) {
     throw new Error('episodeId is required')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      name: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

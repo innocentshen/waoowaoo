@@ -11,6 +11,7 @@ import type {
     CapabilityValue,
     ModelCapabilities,
 } from '@/lib/model-config-contract'
+import { resolvePreferredCapabilityDefault } from '@/lib/model-capabilities/defaults'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
 import { RatioSelector, StyleSelector } from './config-modal-selectors'
 import { ModelCapabilityDropdown } from './ModelCapabilityDropdown'
@@ -293,8 +294,9 @@ export function SettingsModal({
         // 只对尚未配置的 field 设置默认值（不覆盖已有配置）
         let changed = false
         for (const def of capabilityFieldsForModel) {
-            if (existing[def.field] === undefined && def.options.length > 0) {
-                existing[def.field] = def.options[0]
+            const defaultOption = resolvePreferredCapabilityDefault(def.field, def.options)
+            if (existing[def.field] === undefined && defaultOption !== undefined) {
+                existing[def.field] = defaultOption
                 changed = true
             }
         }
@@ -398,7 +400,7 @@ export function SettingsModal({
                                 <ModelCapabilityDropdown
                                     models={userModels.llm}
                                     value={analysisModel}
-                                    onModelChange={(v) => handleChange(onAnalysisModelChange)(v)}
+                                    onModelChange={(v) => handleModelChange(v, userModels.llm, 'llm', onAnalysisModelChange)}
                                     capabilityFields={analysisCapabilityFields}
                                     placementMode="downward"
                                     capabilityOverrides={selectedAnalysisOverrides}

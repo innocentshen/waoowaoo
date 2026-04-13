@@ -13,6 +13,8 @@ export interface StoryboardGroupProps {
   storyboardStartIndex: number
   videoRatio: string
   isExpanded: boolean
+  panelEdits: Record<string, PanelEditData>
+  panelCandidateIndex: Map<string, unknown>
   isSubmittingStoryboardTask: boolean
   isSelectingCandidate: boolean
   isSubmittingStoryboardTextTask: boolean
@@ -22,6 +24,7 @@ export interface StoryboardGroupProps {
   deletingPanelIds: Set<string>
   saveStateByPanel: Record<string, PanelSaveState>
   hasUnsavedByPanel: Set<string>
+  uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   submittingPanelImageIds: Set<string>
 
@@ -43,6 +46,8 @@ export interface StoryboardGroupProps {
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onUploadPanelImage: (panelId: string, file: File) => Promise<void>
+  onOpenSourcePanelPicker: (panelId: string) => void
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
   getPanelCandidates: (panel: NovelPromotionPanel) => { candidates: string[]; selectedIndex: number } | null

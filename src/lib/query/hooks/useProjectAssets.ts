@@ -1,6 +1,7 @@
 'use client'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 
+import { useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
 import type { Character, Location, MediaRef, Prop } from '@/types/project'
@@ -115,8 +116,8 @@ export function useProjectAssets(projectId: string | null) {
         scope: 'project',
         projectId,
     })
-    const groups = groupAssetsByKind(assetsQuery.data)
-    const data = mapAssetGroupsToProjectAssetsData(groups)
+    const groups = useMemo(() => groupAssetsByKind(assetsQuery.data), [assetsQuery.data])
+    const data = useMemo(() => mapAssetGroupsToProjectAssetsData(groups), [groups])
 
     return {
         ...assetsQuery,
@@ -166,12 +167,15 @@ export function useRefreshProjectAssets(projectId: string | null) {
     return () => {
         if (projectId) {
             _ulogInfo('[刷新资产] 同时刷新 projectAssets / projectData / tasks 缓存')
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.assets.all('project', projectId),
-            })
-            queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(projectId) })
-            queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) })
-            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
+            return Promise.all([
+                queryClient.invalidateQueries({
+                    queryKey: queryKeys.assets.all('project', projectId),
+                }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(projectId) }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false }),
+            ]).then(() => undefined)
         }
+        return Promise.resolve()
     }
 }

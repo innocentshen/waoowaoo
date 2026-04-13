@@ -50,6 +50,9 @@ export class SiliconFlowImageGenerator extends BaseImageGenerator {
 
 export class BailianVideoGenerator extends BaseVideoGenerator {
   protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+    if (!params.imageUrl) {
+      throw new Error('BAILIAN_VIDEO_INPUT_REQUIRED: imageUrl')
+    }
     const modelId = typeof params.options?.modelId === 'string' ? params.options.modelId : ''
     const modelKey = typeof params.options?.modelKey === 'string' ? params.options.modelKey : ''
     const provider = typeof params.options?.provider === 'string' ? params.options.provider : 'bailian'
@@ -69,6 +72,9 @@ export class BailianVideoGenerator extends BaseVideoGenerator {
 
 export class SiliconFlowVideoGenerator extends BaseVideoGenerator {
   protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+    if (!params.imageUrl) {
+      throw new Error('SILICONFLOW_VIDEO_INPUT_REQUIRED: imageUrl')
+    }
     const modelId = typeof params.options?.modelId === 'string' ? params.options.modelId : ''
     const modelKey = typeof params.options?.modelKey === 'string' ? params.options.modelKey : ''
     const provider = typeof params.options?.provider === 'string' ? params.options.provider : 'siliconflow'

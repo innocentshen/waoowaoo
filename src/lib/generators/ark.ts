@@ -306,6 +306,9 @@ export class ArkImageGenerator extends BaseImageGenerator {
 
 export class ArkVideoGenerator extends BaseVideoGenerator {
     protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+        if (!params.imageUrl) {
+            throw new Error('ARK_VIDEO_INPUT_REQUIRED: imageUrl')
+        }
         const { userId, imageUrl, prompt = '', options = {} } = params
 
         const { apiKey } = await getProviderConfig(userId, 'ark')

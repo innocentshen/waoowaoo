@@ -458,11 +458,48 @@
     }
   },
   {
+    "modelType": "llm",
+    "provider": "openai-compatible",
+    "modelId": "gpt-5.4",
+    "capabilities": {
+      "llm": {
+        "reasoningEffortOptions": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "llm",
+    "provider": "openrouter",
+    "modelId": "openai/gpt-5.4",
+    "capabilities": {
+      "llm": {
+        "reasoningEffortOptions": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    }
+  },
+  {
     "modelType": "image",
     "provider": "google",
     "modelId": "gemini-3-pro-image-preview",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "2K",
           "4K"
@@ -476,6 +513,13 @@
     "modelId": "gemini-3-pro-image-preview-batch",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "2K",
           "4K"
@@ -489,6 +533,13 @@
     "modelId": "gemini-3.1-flash-image-preview",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "0.5K",
           "1K",
@@ -504,6 +555,13 @@
     "modelId": "gemini-2.5-flash-image",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1K"
         ]
@@ -515,7 +573,17 @@
     "provider": "google",
     "modelId": "imagen-4.0-generate-001",
     "capabilities": {
-      "image": {}
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1K",
+          "2K"
+        ]
+      }
     }
   },
   {
@@ -523,7 +591,13 @@
     "provider": "google",
     "modelId": "imagen-4.0-fast-generate-001",
     "capabilities": {
-      "image": {}
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "9:16",
+          "16:9"
+        ]
+      }
     }
   },
   {
@@ -531,7 +605,17 @@
     "provider": "google",
     "modelId": "imagen-4.0-ultra-generate-001",
     "capabilities": {
-      "image": {}
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1K",
+          "2K"
+        ]
+      }
     }
   },
   {
@@ -540,6 +624,10 @@
     "modelId": "veo-3.1-generate-preview",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "16:9",
+          "9:16"
+        ],
         "generationModeOptions": [
           "normal",
           "firstlastframe"
@@ -565,6 +653,10 @@
     "modelId": "veo-3.1-fast-generate-preview",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "16:9",
+          "9:16"
+        ],
         "generationModeOptions": [
           "normal",
           "firstlastframe"
@@ -590,6 +682,10 @@
     "modelId": "veo-3.0-generate-001",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "16:9",
+          "9:16"
+        ],
         "durationOptions": [
           4,
           6,
@@ -610,6 +706,10 @@
     "modelId": "veo-3.0-fast-generate-001",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "16:9",
+          "9:16"
+        ],
         "durationOptions": [
           4,
           6,
@@ -630,6 +730,10 @@
     "modelId": "veo-2.0-generate-001",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "16:9",
+          "9:16"
+        ],
         "durationOptions": [
           5,
           6,
@@ -1133,6 +1237,266 @@
           "1080p"
         ],
         "firstlastframe": true,
+        "supportGenerateAudio": false
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "grok",
+    "modelId": "grok-imagine-image",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1k",
+          "2k"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "grok",
+    "modelId": "grok-imagine-image-pro",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1k",
+          "2k"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "grok",
+    "modelId": "grok-imagine-video",
+    "capabilities": {
+      "video": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
+        "generationModeOptions": [
+          "normal",
+          "edit",
+          "extend"
+        ],
+        "durationOptions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "resolutionOptions": [
+          "480p",
+          "720p"
+        ],
+        "firstlastframe": false,
+        "supportGenerateAudio": false
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-1.0",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-1.0-fast",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-1.0-edit",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-image-lite",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-image",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-image-pro",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-image-edit",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1024x1024",
+          "1280x720",
+          "720x1280",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-1.0-video",
+    "capabilities": {
+      "video": {
+        "generationModeOptions": [
+          "normal"
+        ],
+        "durationOptions": [
+          6,
+          10,
+          12,
+          16,
+          20
+        ],
+        "resolutionOptions": [
+          "480p",
+          "720p"
+        ],
+        "firstlastframe": false,
+        "supportGenerateAudio": false
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "openai-compatible",
+    "modelId": "grok-imagine-video",
+    "capabilities": {
+      "video": {
+        "generationModeOptions": [
+          "normal"
+        ],
+        "durationOptions": [
+          6,
+          10,
+          12,
+          16,
+          20
+        ],
+        "resolutionOptions": [
+          "480p",
+          "720p"
+        ],
+        "firstlastframe": false,
         "supportGenerateAudio": false
       }
     }

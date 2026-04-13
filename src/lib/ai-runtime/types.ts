@@ -1,6 +1,8 @@
 import type OpenAI from 'openai'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 export type AiRuntimeErrorCode =
+  | 'EXTERNAL_ERROR'
   | 'NETWORK_ERROR'
   | 'RATE_LIMIT'
   | 'EMPTY_RESPONSE'
@@ -38,7 +40,7 @@ export type AiStepExecutionInput = {
   meta: AiStepMeta
   temperature?: number
   reasoning?: boolean
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffort
 }
 
 export type AiStepExecutionResult = {
@@ -62,7 +64,7 @@ export type AiVisionStepExecutionInput = {
   meta?: AiStepMeta
   temperature?: number
   reasoning?: boolean
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffort
 }
 
 export type AiVisionStepExecutionResult = {

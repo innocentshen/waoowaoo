@@ -1,4 +1,4 @@
-import type { ChatMessage } from './types'
+import type { ChatMessage, ReasoningEffort } from './types'
 
 function splitThinkTaggedContent(input: string): { text: string; reasoning: string } {
     const thinkTagPattern = /<(think|thinking)\b[^>]*>([\s\S]*?)<\/\1>/gi
@@ -133,8 +133,19 @@ export function getConversationMessages(messages: ChatMessage[]) {
         }))
 }
 
-export function mapReasoningEffort(effort: 'minimal' | 'low' | 'medium' | 'high' | undefined) {
+export function mapReasoningEffort(effort: ReasoningEffort | undefined) {
     if (effort === 'low' || effort === 'medium' || effort === 'high') return effort
+    if (effort === 'minimal') return 'low'
+    if (effort === 'xhigh') return 'high'
+    return 'high'
+}
+
+export function mapOpenAICompatReasoningEffort(
+    effort: ReasoningEffort | undefined,
+): 'low' | 'medium' | 'high' | 'xhigh' {
+    if (effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh') {
+        return effort
+    }
     if (effort === 'minimal') return 'low'
     return 'high'
 }

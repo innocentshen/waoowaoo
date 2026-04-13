@@ -13,6 +13,7 @@ import {
   getUserModelConfig,
   resolveProjectModelCapabilityGenerationOptions,
 } from '@/lib/config-service'
+import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { TaskTerminatedError } from '@/lib/task/errors'
 import { isTaskActive, trySetTaskExternalId } from '@/lib/task/service'
 import { type TaskJobData } from '@/lib/task/types'
@@ -81,6 +82,34 @@ function normalizeExternalId(result: {
   const externalId = typeof result.externalId === 'string' ? result.externalId.trim() : ''
   if (externalId) return externalId
   throw new Error(`ASYNC_EXTERNAL_ID_MISSING: async ${mediaType} task returned without standard externalId`)
+}
+
+export function sanitizeVideoRequestOptionsForModel(input: {
+  modelKey: string
+  generationMode?: 'normal' | 'firstlastframe' | 'edit' | 'extend'
+  options: Record<string, string | number | boolean>
+}): Record<string, string | number | boolean> {
+  const parsed = parseModelKeyStrict(input.modelKey)
+  if (!parsed || parsed.provider !== 'grok') {
+    return input.options
+  }
+
+  if (input.generationMode === 'edit') {
+    const next = { ...input.options }
+    delete next.resolution
+    delete next.aspectRatio
+    delete next.duration
+    return next
+  }
+
+  if (input.generationMode === 'extend') {
+    const next = { ...input.options }
+    delete next.resolution
+    delete next.aspectRatio
+    return next
+  }
+
+  return input.options
 }
 
 export async function waitExternalResult(
@@ -211,6 +240,9 @@ export async function resolveImageSourceFromGeneration(
   })
 
   const runtimeSelections: Record<string, string | number | boolean> = {}
+  if (typeof params.options?.aspectRatio === 'string') {
+    runtimeSelections.aspectRatio = params.options.aspectRatio
+  }
   if (typeof params.options?.resolution === 'string') {
     runtimeSelections.resolution = params.options.resolution
   }
@@ -335,6 +367,9 @@ export async function resolveImageSourcesFromGeneration(
   })
 
   const runtimeSelections: Record<string, string | number | boolean> = {}
+  if (typeof params.options?.aspectRatio === 'string') {
+    runtimeSelections.aspectRatio = params.options.aspectRatio
+  }
   if (typeof params.options?.resolution === 'string') {
     runtimeSelections.resolution = params.options.resolution
   }
@@ -410,7 +445,9 @@ export async function resolveVideoSourceFromGeneration(
   params: {
     userId: string
     modelId: string
-    imageUrl: string
+    imageUrl?: string
+    videoUrl?: string
+    referenceImages?: string[]
     options?: {
       prompt?: string
       duration?: number
@@ -419,7 +456,7 @@ export async function resolveVideoSourceFromGeneration(
       aspectRatio?: string
       generateAudio?: boolean
       lastFrameImageUrl?: string
-      generationMode?: 'normal' | 'firstlastframe'
+      generationMode?: 'normal' | 'firstlastframe' | 'edit' | 'extend'
       [key: string]: string | number | boolean | undefined
     }
     pollProgress?: { start?: number; end?: number }
@@ -455,10 +492,14 @@ export async function resolveVideoSourceFromGeneration(
     message: 'video source generation started',
     details: {
       model: params.modelId,
+      referenceImageCount: params.referenceImages?.length ?? 0,
     },
   })
 
   const runtimeSelections: Record<string, string | number | boolean> = {}
+  if (typeof params.options?.aspectRatio === 'string') {
+    runtimeSelections.aspectRatio = params.options.aspectRatio
+  }
   if (typeof params.options?.duration === 'number') {
     runtimeSelections.duration = params.options.duration
   }
@@ -468,6 +509,8 @@ export async function resolveVideoSourceFromGeneration(
   if (
     params.options?.generationMode === 'normal'
     || params.options?.generationMode === 'firstlastframe'
+    || params.options?.generationMode === 'edit'
+    || params.options?.generationMode === 'extend'
   ) {
     runtimeSelections.generationMode = params.options.generationMode
   }
@@ -490,12 +533,23 @@ export async function resolveVideoSourceFromGeneration(
     if (key === 'generationMode' || value === undefined) continue
     providerRequestOptions[key] = value
   }
+  const mergedVideoRequestOptions = sanitizeVideoRequestOptionsForModel({
+    modelKey: params.modelId,
+    generationMode: params.options?.generationMode,
+    options: {
+      ...providerRequestOptions,
+      ...providerCapabilityOptions,
+    },
+  })
 
   const result = await withLogContext(
     { projectId: job.data.projectId, taskId: job.data.taskId, userId: params.userId },
-    () => generateVideo(params.userId, params.modelId, params.imageUrl, {
-      ...providerRequestOptions,
-      ...providerCapabilityOptions,
+    () => generateVideo(params.userId, params.modelId, {
+      ...(params.imageUrl ? { imageUrl: params.imageUrl } : {}),
+      ...(params.videoUrl ? { videoUrl: params.videoUrl } : {}),
+    }, {
+      ...(params.referenceImages && params.referenceImages.length > 0 ? { referenceImages: params.referenceImages } : {}),
+      ...mergedVideoRequestOptions,
     }),
   )
   if (!result.success) {

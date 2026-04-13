@@ -13,6 +13,8 @@ import {
   sortStoryboardsByClipOrder,
 } from './storyboard-state-utils'
 
+type StoryboardCharacter = { name: string; appearance: string; slot?: string }
+
 export interface StoryboardPanel {
   id: string
   panelIndex: number
@@ -20,7 +22,7 @@ export interface StoryboardPanel {
   shot_type: string
   camera_move: string | null
   description: string
-  characters: { name: string; appearance: string; slot?: string }[]
+  characters: StoryboardCharacter[]
   location?: string
   srt_range?: string
   duration?: number
@@ -28,9 +30,9 @@ export interface StoryboardPanel {
   source_text?: string
   candidateImages?: string
   imageUrl?: string | null
-  photographyRules?: string | null  // 单镜头摄影规则JSON
-  actingNotes?: string | null       // 演技指导数据JSON
-  imageTaskRunning?: boolean  // 任务态运行状态（由 tasks 派生）
+  photographyRules?: string | null
+  actingNotes?: string | null
+  imageTaskRunning?: boolean
 }
 
 interface UseStoryboardStateProps {
@@ -38,6 +40,77 @@ interface UseStoryboardStateProps {
   episodeId: string
   initialStoryboards: NovelPromotionStoryboard[]
   clips: NovelPromotionClip[]
+}
+
+function parsePanelCharacters(charactersJson: string | null | undefined): StoryboardCharacter[] {
+  if (!charactersJson) return []
+
+  try {
+    const parsed = JSON.parse(charactersJson)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed.flatMap((item): StoryboardCharacter[] => {
+      if (
+        typeof item !== 'object'
+        || item === null
+        || typeof (item as { name?: unknown }).name !== 'string'
+        || typeof (item as { appearance?: unknown }).appearance !== 'string'
+      ) {
+        return []
+      }
+
+      const candidate = item as { name: string; appearance: string; slot?: unknown }
+      return [{
+        name: candidate.name,
+        appearance: candidate.appearance,
+        slot: typeof candidate.slot === 'string' ? candidate.slot : undefined,
+      }]
+    })
+  } catch {
+    return []
+  }
+}
+
+function toStoryboardPanel(panel: NovelPromotionPanel): StoryboardPanel {
+  return {
+    id: panel.id,
+    panelIndex: panel.panelIndex,
+    panel_number: panel.panelNumber ?? panel.panelIndex + 1,
+    shot_type: panel.shotType ?? '',
+    camera_move: panel.cameraMove,
+    description: panel.description ?? '',
+    location: panel.location || undefined,
+    characters: parsePanelCharacters(panel.characters),
+    srt_range: panel.srtStart && panel.srtEnd ? `${panel.srtStart}-${panel.srtEnd}` : undefined,
+    duration: panel.duration ?? undefined,
+    video_prompt: panel.videoPrompt || undefined,
+    source_text: panel.srtSegment || undefined,
+    candidateImages: panel.candidateImages || undefined,
+    imageUrl: panel.imageUrl,
+    photographyRules: panel.photographyRules,
+    actingNotes: panel.actingNotes,
+    imageTaskRunning: panel.imageTaskRunning || false,
+  }
+}
+
+function toPanelEditData(panel: StoryboardPanel): PanelEditData {
+  return {
+    id: panel.id,
+    panelIndex: panel.panelIndex,
+    panelNumber: panel.panel_number,
+    shotType: panel.shot_type,
+    cameraMove: panel.camera_move,
+    description: panel.description,
+    location: panel.location || null,
+    characters: panel.characters || [],
+    srtStart: null,
+    srtEnd: null,
+    duration: panel.duration || null,
+    videoPrompt: panel.video_prompt || null,
+    photographyRules: panel.photographyRules ?? null,
+    actingNotes: panel.actingNotes ?? null,
+    sourceText: panel.source_text,
+  }
 }
 
 export function useStoryboardState({
@@ -51,6 +124,7 @@ export function useStoryboardState({
     () => sortStoryboardsByClipOrder(initialStoryboards, clips),
     [clips, initialStoryboards],
   )
+  const clipById = useMemo(() => new Map(clips.map((clip) => [clip.id, clip])), [clips])
 
   const setLocalStoryboards = useCallback<React.Dispatch<React.SetStateAction<NovelPromotionStoryboard[]>>>(
     (nextStoryboardsOrUpdater) => {
@@ -88,105 +162,84 @@ export function useStoryboardState({
   )
 
   const [expandedClips, setExpandedClips] = useState<Set<string>>(new Set())
-
   const [panelEdits, setPanelEdits] = useState<Record<string, PanelEditData>>({})
+
   // Keep latest panel edits for async callbacks without adding unstable deps.
   const panelEditsRef = useRef<Record<string, PanelEditData>>({})
   panelEditsRef.current = panelEdits
 
-  const getClipInfo = (clipId: string) => clips.find(c => c.id === clipId)
+  const textPanelsByStoryboardId = useMemo(() => {
+    const panelsByStoryboardId = new Map<string, StoryboardPanel[]>()
 
-  const getPanelImages = (storyboard: NovelPromotionStoryboard): Array<string | null> => {
-    const panels = getStoryboardPanels(storyboard)
-    if (panels.length > 0) {
-      return panels.map((p) => p.imageUrl || null)
-    }
-    return []
-  }
+    localStoryboards.forEach((storyboard) => {
+      const panels = getStoryboardPanels(storyboard)
+      const sortedPanels = panels.length > 1
+        ? [...panels].sort((a, b) => (a.panelIndex || 0) - (b.panelIndex || 0))
+        : panels
 
-  const getTextPanels = (storyboard: NovelPromotionStoryboard): StoryboardPanel[] => {
-    const panels = getStoryboardPanels(storyboard)
-    const sortedPanels = [...panels].sort((a: NovelPromotionPanel, b: NovelPromotionPanel) =>
-      (a.panelIndex || 0) - (b.panelIndex || 0)
-    )
-    return sortedPanels.map((p) => {
-      const parsedChars = p.characters ? JSON.parse(p.characters) : []
-      const characters = Array.isArray(parsedChars)
-        ? parsedChars.flatMap((item): Array<{ name: string; appearance: string; slot?: string }> => {
-          if (
-            typeof item !== 'object'
-            || item === null
-            || typeof (item as { name?: unknown }).name !== 'string'
-            || typeof (item as { appearance?: unknown }).appearance !== 'string'
-          ) {
-            return []
-          }
-          const candidate = item as { name: string; appearance: string; slot?: unknown }
-          return [{
-            name: candidate.name,
-            appearance: candidate.appearance,
-            slot: typeof candidate.slot === 'string' ? candidate.slot : undefined,
-          }]
-        })
-        : []
+      panelsByStoryboardId.set(storyboard.id, sortedPanels.map(toStoryboardPanel))
+    })
+
+    return panelsByStoryboardId
+  }, [localStoryboards])
+
+  const panelImagesByStoryboardId = useMemo(() => {
+    const imagesByStoryboardId = new Map<string, Array<string | null>>()
+
+    textPanelsByStoryboardId.forEach((panels, storyboardId) => {
+      imagesByStoryboardId.set(storyboardId, panels.map((panel) => panel.imageUrl || null))
+    })
+
+    return imagesByStoryboardId
+  }, [textPanelsByStoryboardId])
+
+  const basePanelEditDataById = useMemo(() => {
+    const panelEditDataById = new Map<string, PanelEditData>()
+
+    textPanelsByStoryboardId.forEach((panels) => {
+      panels.forEach((panel) => {
+        panelEditDataById.set(panel.id, toPanelEditData(panel))
+      })
+    })
+
+    return panelEditDataById
+  }, [textPanelsByStoryboardId])
+
+  const getClipInfo = useCallback((clipId: string) => clipById.get(clipId), [clipById])
+
+  const getPanelImages = useCallback(
+    (storyboard: NovelPromotionStoryboard): Array<string | null> => panelImagesByStoryboardId.get(storyboard.id) ?? [],
+    [panelImagesByStoryboardId],
+  )
+
+  const getTextPanels = useCallback(
+    (storyboard: NovelPromotionStoryboard): StoryboardPanel[] => textPanelsByStoryboardId.get(storyboard.id) ?? [],
+    [textPanelsByStoryboardId],
+  )
+
+  const getPanelEditData = useCallback((panel: StoryboardPanel): PanelEditData => {
+    return panelEdits[panel.id] ?? basePanelEditDataById.get(panel.id) ?? toPanelEditData(panel)
+  }, [basePanelEditDataById, panelEdits])
+
+  const updatePanelEdit = useCallback((panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => {
+    setPanelEdits((previous) => {
+      const currentData = previous[panelId] ?? basePanelEditDataById.get(panelId) ?? toPanelEditData(panel)
+      const nextData = { ...currentData, ...updates }
+      const hasChanged = Object.keys(updates).some((key) => {
+        const typedKey = key as keyof PanelEditData
+        return currentData[typedKey] !== nextData[typedKey]
+      })
+      if (!hasChanged) return previous
       return {
-        id: p.id,
-        panelIndex: p.panelIndex,
-        panel_number: p.panelNumber ?? p.panelIndex + 1,
-        shot_type: p.shotType ?? '',
-        camera_move: p.cameraMove,
-        description: p.description ?? '',
-        location: p.location || undefined,
-        characters,
-        srt_range: p.srtStart && p.srtEnd ? `${p.srtStart}-${p.srtEnd}` : undefined,
-        duration: p.duration ?? undefined,
-        video_prompt: p.videoPrompt || undefined,
-        source_text: p.srtSegment || undefined,
-        candidateImages: p.candidateImages || undefined,
-        imageUrl: p.imageUrl,
-        photographyRules: p.photographyRules,
-        actingNotes: p.actingNotes,
-        imageTaskRunning: p.imageTaskRunning || false
+        ...previous,
+        [panelId]: nextData,
       }
     })
-  }
+  }, [basePanelEditDataById])
 
-  const getPanelEditData = (panel: StoryboardPanel): PanelEditData => {
-    if (panelEdits[panel.id]) {
-      return panelEdits[panel.id]
-    }
-    return {
-      id: panel.id,
-      panelIndex: panel.panelIndex,
-      panelNumber: panel.panel_number,
-      shotType: panel.shot_type,
-      cameraMove: panel.camera_move,
-      description: panel.description,
-      location: panel.location || null,
-      characters: panel.characters || [],
-      srtStart: null,
-      srtEnd: null,
-      duration: panel.duration || null,
-      videoPrompt: panel.video_prompt || null,
-      photographyRules: panel.photographyRules ?? null,
-      actingNotes: panel.actingNotes ?? null,
-      sourceText: panel.source_text
-    }
-  }
-
-  const updatePanelEdit = (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => {
-    setPanelEdits(prev => {
-      const currentData = prev[panelId] || getPanelEditData(panel)
-      return {
-        ...prev,
-        [panelId]: { ...currentData, ...updates }
-      }
-    })
-  }
-
-  const toggleExpandedClip = (storyboardId: string) => {
-    setExpandedClips(prev => {
-      const next = new Set(prev)
+  const toggleExpandedClip = useCallback((storyboardId: string) => {
+    setExpandedClips((previous) => {
+      const next = new Set(previous)
       if (next.has(storyboardId)) {
         next.delete(storyboardId)
       } else {
@@ -194,16 +247,11 @@ export function useStoryboardState({
       }
       return next
     })
-  }
+  }, [])
 
-  const sortedStoryboards = [...localStoryboards].sort((a, b) => {
-    const clipIndexA = clips.findIndex(c => c.id === a.clipId)
-    const clipIndexB = clips.findIndex(c => c.id === b.clipId)
-    return clipIndexA - clipIndexB
-  })
-
-  const totalPanels = computeTotalPanels(localStoryboards)
-  const storyboardStartIndex = computeStoryboardStartIndex(sortedStoryboards)
+  const sortedStoryboards = useMemo(() => localStoryboards, [localStoryboards])
+  const totalPanels = useMemo(() => computeTotalPanels(localStoryboards), [localStoryboards])
+  const storyboardStartIndex = useMemo(() => computeStoryboardStartIndex(sortedStoryboards), [sortedStoryboards])
 
   return {
     localStoryboards,
@@ -221,6 +269,6 @@ export function useStoryboardState({
     updatePanelEdit,
     formatClipTitle,
     totalPanels,
-    storyboardStartIndex
+    storyboardStartIndex,
   }
 }

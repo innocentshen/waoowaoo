@@ -2,12 +2,15 @@ import type { GenerateResult } from '@/lib/generators/base'
 import {
   GROK_DEFAULT_IMAGE_MODEL_ID,
   guessImageMimeTypeFromBase64,
-  normalizeGrokImageInput,
+  normalizeGrokImageAspectRatio,
+  normalizeGrokEditImageInput,
+  normalizeGrokImageResolution,
   normalizeGrokResponseFormat,
   readGrokErrorMessage,
   readTrimmedString,
   resolveGrokProviderConfig,
 } from './shared'
+import { getGrokEditInputImageLimitExceededMessage } from './edit-input-limit'
 
 export interface GrokImageGenerateParams {
   userId: string
@@ -65,13 +68,11 @@ function parseImageResponse(raw: string): GrokImageResponse {
 }
 
 function normalizeAspectRatio(value: unknown): string | undefined {
-  const aspectRatio = readTrimmedString(value)
-  return aspectRatio || undefined
+  return normalizeGrokImageAspectRatio(value)
 }
 
 function normalizeResolution(value: unknown): string | undefined {
-  const resolution = readTrimmedString(value)
-  return resolution ? resolution.toLowerCase() : undefined
+  return normalizeGrokImageResolution(value)
 }
 
 function buildImageResult(payload: GrokImageResponse): GenerateResult {
@@ -116,8 +117,15 @@ export async function generateGrokImage(params: GrokImageGenerateParams): Promis
   const responseFormat = normalizeGrokResponseFormat(params.options.responseFormat)
   const aspectRatio = normalizeAspectRatio(params.options.aspectRatio)
   const resolution = normalizeResolution(params.options.resolution)
+  // xAI image edit limits are model-specific.
+  // Normalize each reference to a URL or data-URI that xAI can consume directly.
+  const referenceImages = params.referenceImages || []
+  const limitError = getGrokEditInputImageLimitExceededMessage(modelId, referenceImages.length)
+  if (limitError) {
+    throw new Error(`GROK_IMAGE_REFERENCE_LIMIT_EXCEEDED: ${limitError}`)
+  }
   const normalizedReferences = await Promise.all(
-    (params.referenceImages || []).map((image) => normalizeGrokImageInput(image)),
+    referenceImages.map((image) => normalizeGrokEditImageInput(image)),
   )
 
   const endpoint = normalizedReferences.length > 0 ? '/images/edits' : '/images/generations'

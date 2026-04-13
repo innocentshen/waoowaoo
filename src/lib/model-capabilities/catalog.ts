@@ -45,6 +45,17 @@ function getProviderKey(providerId: string): string {
   return marker === -1 ? providerId : providerId.slice(0, marker)
 }
 
+function getModelIdLookupCandidates(providerId: string, modelId: string): string[] {
+  const candidates = [modelId]
+  const providerKey = getProviderKey(providerId)
+
+  if ((providerKey === 'google' || providerKey === 'gemini-compatible') && modelId.endsWith('-gcp')) {
+    candidates.push(modelId.slice(0, -'-gcp'.length))
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)))
+}
+
 function cloneCapabilities(capabilities: ModelCapabilities | undefined): ModelCapabilities | undefined {
   if (!capabilities) return undefined
   return JSON.parse(JSON.stringify(capabilities)) as ModelCapabilities
@@ -112,7 +123,7 @@ function buildCache(entries: BuiltinCapabilityCatalogEntry[], signature: string)
 function resolveCatalogFiles(): string[] {
   return fs
     .readdirSync(CATALOG_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.catalog.json'))
     .map((entry) => path.join(CATALOG_DIR, entry.name))
     .sort((left, right) => left.localeCompare(right))
 }
@@ -131,7 +142,7 @@ function loadCatalog(): CatalogCache {
   const files = resolveCatalogFiles()
 
   if (files.length === 0) {
-    throw new Error(`CAPABILITY_CATALOG_MISSING: no json file in ${CATALOG_DIR}`)
+    throw new Error(`CAPABILITY_CATALOG_MISSING: no .catalog.json file in ${CATALOG_DIR}`)
   }
   const signature = buildCatalogSignature(files)
   if (cache && cache.signature === signature) return cache
@@ -172,37 +183,39 @@ export function findBuiltinCapabilityCatalogEntry(
   modelId: string,
 ): BuiltinCapabilityCatalogEntry | null {
   const loaded = loadCatalog()
-  const modelKey = composeModelKey(provider, modelId)
-  if (!modelKey) return null
-
-  const exactKey = `${modelType}::${modelKey}`
-  const exactMatch = loaded.exact.get(exactKey)
-  if (exactMatch) {
-    return {
-      ...exactMatch,
-      capabilities: cloneCapabilities(exactMatch.capabilities),
-    }
-  }
-
   const providerKey = getProviderKey(provider)
-  const fallbackKey = `${modelType}::${providerKey}::${modelId}`
-  const fallback = loaded.byProviderKey.get(fallbackKey)
-  if (fallback) {
-    return {
-      ...fallback,
-      capabilities: cloneCapabilities(fallback.capabilities),
-    }
-  }
-
-  // Fallback: check canonical provider alias (e.g. gemini-compatible → google)
   const aliasTarget = CAPABILITY_PROVIDER_ALIASES[providerKey]
-  if (aliasTarget) {
-    const aliasKey = `${modelType}::${aliasTarget}::${modelId}`
-    const aliasMatch = loaded.byProviderKey.get(aliasKey)
-    if (aliasMatch) {
+
+  for (const candidateModelId of getModelIdLookupCandidates(provider, modelId)) {
+    const modelKey = composeModelKey(provider, candidateModelId)
+    if (modelKey) {
+      const exactKey = `${modelType}::${modelKey}`
+      const exactMatch = loaded.exact.get(exactKey)
+      if (exactMatch) {
+        return {
+          ...exactMatch,
+          capabilities: cloneCapabilities(exactMatch.capabilities),
+        }
+      }
+    }
+
+    const fallbackKey = `${modelType}::${providerKey}::${candidateModelId}`
+    const fallback = loaded.byProviderKey.get(fallbackKey)
+    if (fallback) {
       return {
-        ...aliasMatch,
-        capabilities: cloneCapabilities(aliasMatch.capabilities),
+        ...fallback,
+        capabilities: cloneCapabilities(fallback.capabilities),
+      }
+    }
+
+    if (aliasTarget) {
+      const aliasKey = `${modelType}::${aliasTarget}::${candidateModelId}`
+      const aliasMatch = loaded.byProviderKey.get(aliasKey)
+      if (aliasMatch) {
+        return {
+          ...aliasMatch,
+          capabilities: cloneCapabilities(aliasMatch.capabilities),
+        }
       }
     }
   }

@@ -19,6 +19,7 @@ import {
 import { buildAnalyzeGlobalPrompts, loadAnalyzeGlobalPromptTemplates } from './analyze-global-prompt'
 import { createAnalyzeGlobalStats, persistAnalyzeGlobalChunk } from './analyze-global-persist'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -26,12 +27,7 @@ function readAssetKind(value: Record<string, unknown>): string {
 
 export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
   const projectId = job.data.projectId
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

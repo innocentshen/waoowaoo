@@ -90,10 +90,12 @@ interface DetectionPattern {
     extractTitle: (match: RegExpMatchArray, content: string, nextIndex?: number) => string
 }
 
+const MARKER_LINE_PREFIX = String.raw`^\s{0,3}(?:#{1,6}\s*)?`
+
 const DETECTION_PATTERNS: DetectionPattern[] = [
     // 1. 中文"第X集"
     {
-        regex: /^第([一二三四五六七八九十百千\d]+)集[：:\s]*(.*)?/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}第([一二三四五六七八九十百千\\d]+)集[：:\\s]*(.*)?`, 'gm'),
         typeKey: 'episode',
         typeName: '第X集',
         extractNumber: (match) => chineseToNumber(match[1]),
@@ -101,7 +103,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 2. 中文"第X章"
     {
-        regex: /^第([一二三四五六七八九十百千\d]+)章[：:\s]*(.*)?/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}第([一二三四五六七八九十百千\\d]+)章[：:\\s]*(.*)?`, 'gm'),
         typeKey: 'chapter',
         typeName: '第X章',
         extractNumber: (match) => chineseToNumber(match[1]),
@@ -109,7 +111,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 3. 中文"第X幕"
     {
-        regex: /^第([一二三四五六七八九十百千\d]+)幕[：:\s]*(.*)?/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}第([一二三四五六七八九十百千\\d]+)幕[：:\\s]*(.*)?`, 'gm'),
         typeKey: 'act',
         typeName: '第X幕',
         extractNumber: (match) => chineseToNumber(match[1]),
@@ -117,7 +119,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 4. 场景编号 X-Y【场景】 - 只取第一个数字作为集数
     {
-        regex: /^(\d+)-\d+[【\[](.*?)[】\]]/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}(\\d+)-\\d+[【\\[](.*?)[】\\]]`, 'gm'),
         typeKey: 'scene',
         typeName: 'X-Y【场景】',
         extractNumber: (match) => parseInt(match[1], 10),
@@ -125,7 +127,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 5. 数字前缀 "1. 标题" 或 "1、标题"
     {
-        regex: /^(\d+)[\.、：:]\s*(.+)/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}(\\d+)[\\.、：:]\\s*(.+)`, 'gm'),
         typeKey: 'numbered',
         typeName: '数字编号',
         extractNumber: (match) => parseInt(match[1], 10),
@@ -133,7 +135,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 5.5 数字+转义点 "1\." 或 "3\."（Markdown格式）
     {
-        regex: /^(\d+)\\\.\s*(.+)/gm,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}(\\d+)\\\\\\.\\s*(.+)`, 'gm'),
         typeKey: 'numberedEscaped',
         typeName: '数字编号(转义)',
         extractNumber: (match) => parseInt(match[1], 10),
@@ -149,7 +151,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 6. 英文 Episode
     {
-        regex: /^Episode\s*(\d+)[：:\s]*(.*)?/gim,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}Episode\\s*(\\d+)[：:\\s]*(.*)?`, 'gim'),
         typeKey: 'episodeEn',
         typeName: 'Episode X',
         extractNumber: (match) => parseInt(match[1], 10),
@@ -157,7 +159,7 @@ const DETECTION_PATTERNS: DetectionPattern[] = [
     },
     // 7. 英文 Chapter
     {
-        regex: /^Chapter\s*(\d+)[：:\s]*(.*)?/gim,
+        regex: new RegExp(`${MARKER_LINE_PREFIX}Chapter\\s*(\\d+)[：:\\s]*(.*)?`, 'gim'),
         typeKey: 'chapterEn',
         typeName: 'Chapter X',
         extractNumber: (match) => parseInt(match[1], 10),
@@ -294,7 +296,7 @@ export function detectEpisodeMarkers(content: string): EpisodeMarkerResult {
         // 生成预览：从数字前缀后开始取内容（只跳过如 "1." 这样的前缀，不跳过整行）
         const markerPositionInContent = match.index - startIndex
         // 计算数字前缀的长度
-        const markerPrefix = match.text.match(/^(?:第[一二三四五六七八九十百千\d]+[集章幕]|Episode\s*\d+|Chapter\s*\d+|\*\*\d+\*\*|\d+)[\.、：:\s]*/i)?.[0] || ''
+        const markerPrefix = match.text.match(/^(?:\s{0,3}(?:#{1,6}\s*)?)?(?:第[一二三四五六七八九十百千\d]+[集章幕]|Episode\s*\d+|Chapter\s*\d+|\*\*\d+\*\*|\d+)[\.、：:\s]*/i)?.[0] || ''
         const prefixLength = markerPrefix.length || match.text.length
         const previewStart = markerPositionInContent + prefixLength
         const preview = episodeContent.slice(previewStart, previewStart + 50).trim().slice(0, 20)

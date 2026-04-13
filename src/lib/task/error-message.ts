@@ -8,6 +8,14 @@ export type TaskErrorSummary = {
   cancelled: boolean
 }
 
+function shouldPreferUserFriendlyMessage(code: string | null | undefined): boolean {
+  return code === 'MODEL_NOT_OPEN'
+    || code === 'EMPTY_RESPONSE'
+    || code === 'EXTERNAL_ERROR'
+    || code === 'NETWORK_ERROR'
+    || code === 'GENERATION_TIMEOUT'
+}
+
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
@@ -88,13 +96,9 @@ export function resolveTaskErrorSummary(payload: unknown, fallbackMessage = 'Tas
       ? getUserMessageByCode(normalized.code as UnifiedErrorCode)
       : null
 
-  const shouldPreferUserFriendlyMessage =
-    normalized?.code === 'MODEL_NOT_OPEN'
-    || normalized?.code === 'EMPTY_RESPONSE'
-
   return {
     code: normalized?.code || code || null,
-    message: shouldPreferUserFriendlyMessage
+    message: shouldPreferUserFriendlyMessage(normalized?.code)
       ? (userFriendlyMessage || message || normalizedMessage || fallbackMessage)
       : (message || userFriendlyMessage || normalizedMessage || fallbackMessage),
     cancelled: false,

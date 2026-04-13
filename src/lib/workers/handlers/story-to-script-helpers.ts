@@ -4,11 +4,12 @@ import type { StoryToScriptClipCandidate } from '@/lib/novel-promotion/story-to-
 import { seedProjectLocationBackedImageSlots } from '@/lib/assets/services/location-backed-assets'
 import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 export type AnyObj = Record<string, unknown>
 
-export function parseEffort(value: unknown): 'minimal' | 'low' | 'medium' | 'high' | null {
-  if (value === 'minimal' || value === 'low' || value === 'medium' || value === 'high') return value
+export function parseEffort(value: unknown): ReasoningEffort | null {
+  if (value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh') return value
   return null
 }
 

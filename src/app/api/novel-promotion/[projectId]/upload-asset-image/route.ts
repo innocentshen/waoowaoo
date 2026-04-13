@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { uploadObject, generateUniqueKey } from '@/lib/storage'
+import { uploadObject, generateUniqueKey, getSignedUrl } from '@/lib/storage'
 import sharp from 'sharp'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
-import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 
 interface CharacterAppearanceRecord {
@@ -40,7 +40,7 @@ interface UploadAssetImageDb {
 
 /**
  * POST /api/novel-promotion/[projectId]/upload-asset-image
- * 上传用户自定义图片作为角色或场景资产
+ * 上传用户自定义图片作为项目资产或分镜画面
  */
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -49,23 +49,22 @@ export const POST = apiHandler(async (
   const { projectId } = await context.params
   const db = prisma as unknown as UploadAssetImageDb
 
-  // 初始化字体（在 Vercel 环境中需要）
-  await initializeFonts()
-
   // 🔐 统一权限验证
-  const authResult = await requireProjectAuthLight(projectId)
+  const authResult = await requireProjectAuth(projectId)
   if (isErrorResponse(authResult)) return authResult
+  const { novelData } = authResult
 
   // 解析表单数据
   const formData = await request.formData()
   const file = formData.get('file') as File
-  const type = formData.get('type') as string // 'character' | 'location'
+  const type = formData.get('type') as string // 'character' | 'location' | 'storyboard'
   const id = formData.get('id') as string // characterId 或 locationId
   const appearanceId = formData.get('appearanceId') as string | null  // UUID
   const imageIndex = formData.get('imageIndex') as string | null
-  const labelText = formData.get('labelText') as string // 文字标识符
+  const labelText = (formData.get('labelText') as string | null) ?? ''
 
-  if (!file || !type || !id || !labelText) {
+  const requiresLabelText = type === 'character' || type === 'location'
+  if (!file || !type || !id || (requiresLabelText && !labelText.trim())) {
     throw new ApiError('INVALID_PARAMS')
   }
 
@@ -73,7 +72,58 @@ export const POST = apiHandler(async (
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
 
+  if (type === 'storyboard') {
+    const panel = await prisma.novelPromotionPanel.findFirst({
+      where: {
+        id,
+        storyboard: {
+          episode: {
+            novelPromotionProjectId: novelData.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+        imageUrl: true,
+        imageMediaId: true,
+        previousImageUrl: true,
+        previousImageMediaId: true,
+      },
+    })
+
+    if (!panel) {
+      throw new ApiError('NOT_FOUND')
+    }
+
+    const processed = await sharp(buffer)
+      .rotate()
+      .jpeg({ quality: 95, mozjpeg: true })
+      .toBuffer()
+
+    const key = generateUniqueKey(`panel-${id}-upload`, 'jpg')
+    await uploadObject(processed, key, 1, 'image/jpeg')
+
+    await prisma.novelPromotionPanel.update({
+      where: { id: panel.id },
+      data: {
+        previousImageUrl: panel.imageUrl || panel.previousImageUrl || null,
+        previousImageMediaId: panel.imageMediaId || panel.previousImageMediaId || null,
+        imageUrl: key,
+        imageMediaId: null,
+        candidateImages: null,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      panelId: panel.id,
+      imageKey: key,
+      imageUrl: getSignedUrl(key, 7 * 24 * 3600),
+    })
+  }
+
   // 添加文字标识符
+  await initializeFonts()
   const meta = await sharp(buffer).metadata()
   const w = meta.width || 2160
   const h = meta.height || 2160

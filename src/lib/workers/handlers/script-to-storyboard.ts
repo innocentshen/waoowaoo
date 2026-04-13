@@ -36,6 +36,8 @@ import {
   parseStoryboardRetryTarget,
   runScriptToStoryboardAtomicRetry,
 } from './script-to-storyboard-atomic-retry'
+import { findProjectBaseById } from '@/lib/projects/project-read'
+import type { ReasoningEffort } from '@/lib/llm/types'
 
 type AnyObj = Record<string, unknown>
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
@@ -53,8 +55,8 @@ function readNullableText(value: Record<string, unknown>, key: string): string |
   return typeof field === 'string' ? field : null
 }
 
-function isReasoningEffort(value: unknown): value is 'minimal' | 'low' | 'medium' | 'high' {
-  return value === 'minimal' || value === 'low' || value === 'medium' || value === 'high'
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
 }
 
 export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
@@ -75,13 +77,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
     throw new Error('episodeId is required')
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      name: true,
-    },
-  })
+  const project = await findProjectBaseById(projectId)
   if (!project) {
     throw new Error('Project not found')
   }

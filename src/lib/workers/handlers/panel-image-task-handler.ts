@@ -16,6 +16,7 @@ import {
   clampCount,
   collectPanelReferenceImages,
   findCharacterByName,
+  parseNamedReferenceList,
   parsePanelCharacterReferences,
   pickFirstString,
   resolveNovelData,
@@ -72,6 +73,7 @@ function buildPanelPromptContext(params: {
     videoPrompt: string | null
     location: string | null
     characters: string | null
+    props: string | null
     srtSegment: string | null
     photographyRules: string | null
     actingNotes: string | null
@@ -103,19 +105,37 @@ function buildPanelPromptContext(params: {
     }
   })
 
-  const locationContext = (() => {
-    if (!params.panel.location) return null
-    const matchedLocation = (params.projectData.locations || []).find(
-      (item) => item.name.toLowerCase() === params.panel.location!.toLowerCase(),
-    )
-    if (!matchedLocation) return null
-    const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
-    return {
-      name: matchedLocation.name,
-      description: selectedImage?.description || null,
-      available_slots: parseLocationAvailableSlots(selectedImage?.availableSlots),
-    }
-  })()
+  const locationContext = parseNamedReferenceList(params.panel.location)
+    .map((locationName) => {
+      const matchedLocation = (params.projectData.locations || []).find(
+        (item) => item.name.toLowerCase() === locationName.toLowerCase(),
+      )
+      if (!matchedLocation) {
+        return {
+          name: locationName,
+          description: null,
+          available_slots: [],
+        }
+      }
+      const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
+      return {
+        name: matchedLocation.name,
+        description: selectedImage?.description || matchedLocation.summary || null,
+        available_slots: parseLocationAvailableSlots(selectedImage?.availableSlots),
+      }
+    })
+
+  const propContext = parseNamedReferenceList(params.panel.props)
+    .map((propName) => {
+      const matchedProp = (params.projectData.props || []).find(
+        (item) => item.name.toLowerCase() === propName.toLowerCase(),
+      )
+      const selectedImage = (matchedProp?.images || []).find((item) => item.isSelected) || matchedProp?.images?.[0]
+      return {
+        name: matchedProp?.name || propName,
+        description: selectedImage?.description || matchedProp?.summary || null,
+      }
+    })
 
   return {
     panel: {
@@ -126,14 +146,17 @@ function buildPanelPromptContext(params: {
       image_prompt: params.panel.imagePrompt || '',
       video_prompt: params.panel.videoPrompt || '',
       location: params.panel.location || '',
+      locations: parseNamedReferenceList(params.panel.location),
       characters: panelCharacters,
+      props: parseNamedReferenceList(params.panel.props),
       source_text: params.panel.srtSegment || '',
       photography_rules: parseJsonUnknown(params.panel.photographyRules),
       acting_notes: parseJsonUnknown(params.panel.actingNotes),
     },
     context: {
       character_appearances: characterContexts,
-      location_reference: locationContext,
+      location_references: locationContext,
+      prop_references: propContext,
     },
   }
 }
@@ -197,6 +220,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       normalizedUrls: normalizedRefs.map((u) => u.substring(0, 100)),
       panelCharacters: panel.characters,
       panelLocation: panel.location,
+      panelProps: panel.props,
       artStyle: modelConfig.artStyle,
     },
   })
@@ -214,6 +238,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       videoPrompt: panel.videoPrompt,
       location: panel.location,
       characters: panel.characters,
+      props: panel.props,
       srtSegment: panel.srtSegment,
       photographyRules: panel.photographyRules,
       actingNotes: panel.actingNotes,

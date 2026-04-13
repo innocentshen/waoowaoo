@@ -26,6 +26,7 @@ const LONG_TEXT_THRESHOLD = 1000
 
 
 interface NovelInputStageProps {
+  projectId?: string
   // 核心数据
   novelText: string
   // 当前剧集名称
@@ -49,6 +50,7 @@ interface NovelInputStageProps {
 }
 
 export default function NovelInputStage({
+  projectId,
   novelText,
   episodeName,
   onNovelTextChange,
@@ -114,6 +116,7 @@ export default function NovelInputStage({
       const result = await expandHomeStory({
         apiFetch,
         prompt,
+        projectId,
       })
 
       setLocalText(result.expandedText)
@@ -125,7 +128,7 @@ export default function NovelInputStage({
     } finally {
       setAiWriteLoading(false)
     }
-  }, [aiWriteLoading, onNovelTextChange])
+  }, [aiWriteLoading, onNovelTextChange, projectId])
 
   // 下拉中使用的简短标签（低信息密度）
   const ratioUsageTagMap: Record<string, string> = {

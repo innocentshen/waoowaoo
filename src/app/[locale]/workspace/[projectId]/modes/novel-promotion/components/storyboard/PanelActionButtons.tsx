@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -24,22 +25,21 @@ export default function PanelActionButtons({
 }: PanelActionButtonsProps) {
     const t = useTranslations('storyboard')
     const baseButtonClass = `
-        group relative h-7 w-7 rounded-full
-        glass-btn-base border border-[var(--glass-stroke-base)]
-        bg-[var(--glass-bg-surface)] text-[var(--glass-text-secondary)]
-        shadow-[var(--glass-shadow-sm)] transition-all duration-200 ease-out
-        flex items-center justify-center
+        group relative flex h-8 w-8 items-center justify-center rounded-full
+        border border-white/70 bg-white/95 text-slate-950
+        shadow-[0_8px_20px_rgba(15,23,42,0.28)] transition-all duration-200 ease-out
     `
     const enabledButtonClass = `
-        hover:-translate-y-0.5 hover:shadow-[var(--glass-shadow-md)]
-        hover:border-[var(--glass-stroke-focus)] hover:bg-[var(--glass-tone-info-bg)]
+        hover:-translate-y-0.5 hover:border-amber-100
+        hover:bg-[linear-gradient(135deg,rgba(253,224,71,0.98),rgba(250,204,21,0.94))]
+        hover:text-slate-950 hover:shadow-[0_10px_24px_rgba(245,158,11,0.35)]
     `
     const disabledButtonClass = `
-        bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)] cursor-not-allowed
+        border-white/15 bg-white/25 text-white/60 cursor-not-allowed shadow-none
     `
 
     return (
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-[rgba(15,23,42,0.72)] p-1.5 shadow-[0_14px_32px_rgba(15,23,42,0.28)] backdrop-blur-sm">
             {/* 插入分镜按钮 */}
             <button
                 onClick={onInsertPanel}
@@ -50,12 +50,12 @@ export default function PanelActionButtons({
                 `}
                 title={t('panelActions.insertHere')}
             >
-                <AppIcon name="plus" className="w-4 h-4" />
+                <AppIcon name="plus" className="h-4 w-4" />
 
                 {/* Hover 时显示提示 */}
                 <span className={`
                     absolute -top-8 left-1/2 -translate-x-1/2
-                    px-2 py-1 text-xs text-white bg-[var(--glass-overlay)] rounded
+                    rounded px-2 py-1 text-xs text-white bg-[rgba(15,23,42,0.92)]
                     opacity-0 group-hover:opacity-100
                     transition-opacity duration-200
                     whitespace-nowrap pointer-events-none
@@ -75,12 +75,12 @@ export default function PanelActionButtons({
                 `}
                 title={hasImage ? t('panelActions.generateVariant') : t('panelActions.needImage')}
             >
-                <AppIcon name="videoAlt" className="w-4 h-4" />
+                <AppIcon name="videoAlt" className="h-4 w-4" />
 
                 {/* Hover 时显示提示 */}
                 <span className={`
                     absolute -top-8 left-1/2 -translate-x-1/2
-                    px-2 py-1 text-xs text-white bg-[var(--glass-overlay)] rounded
+                    rounded px-2 py-1 text-xs text-white bg-[rgba(15,23,42,0.92)]
                     opacity-0 group-hover:opacity-100
                     transition-opacity duration-200
                     whitespace-nowrap pointer-events-none

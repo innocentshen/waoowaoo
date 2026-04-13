@@ -11,6 +11,7 @@ import {
   validateProjectDraft,
   type ProjectDraftInput,
 } from '@/lib/projects/validation'
+import { PROJECT_BASE_SELECT } from '@/lib/projects/project-read'
 
 function readProjectDraftBody(body: unknown): ProjectDraftInput {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -55,6 +56,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
     prisma.project.count({ where }),
     prisma.project.findMany({
       where,
+      select: PROJECT_BASE_SELECT,
       orderBy: { updatedAt: 'desc' },  // 先按更新时间排序获取所有匹配项目
       skip: (page - 1) * pageSize,
       take: pageSize
@@ -214,7 +216,8 @@ export const POST = apiHandler(async (request: NextRequest) => {
       name: name.trim(),
       description: description?.trim() || null,
       userId: session.user.id
-    }
+    },
+    select: PROJECT_BASE_SELECT,
   })
 
   // 创建 novel-promotion 数据表，使用用户偏好作为默认值

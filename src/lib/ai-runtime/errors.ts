@@ -2,6 +2,7 @@ import { normalizeAnyError } from '@/lib/errors/normalize'
 import type { AiRuntimeError, AiRuntimeErrorCode } from './types'
 
 function toCode(value: string): AiRuntimeErrorCode {
+  if (value === 'EXTERNAL_ERROR') return 'EXTERNAL_ERROR'
   if (value === 'NETWORK_ERROR') return 'NETWORK_ERROR'
   if (value === 'RATE_LIMIT') return 'RATE_LIMIT'
   if (value === 'EMPTY_RESPONSE') return 'EMPTY_RESPONSE'

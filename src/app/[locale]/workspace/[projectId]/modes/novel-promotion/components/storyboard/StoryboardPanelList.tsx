@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { NovelPromotionPanel } from '@/types/project'
 import { StoryboardPanel } from './hooks/useStoryboardState'
 import { PanelEditData } from '../PanelEditForm'
@@ -8,16 +8,29 @@ import { ASPECT_RATIO_CONFIGS } from '@/lib/constants'
 import PanelCard from './PanelCard'
 import type { PanelSaveState } from './hooks/usePanelCrudActions'
 
+const VERTICAL_PANEL_STYLE = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '520px',
+} as const
+
+const HORIZONTAL_PANEL_STYLE = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '420px',
+} as const
+
 interface StoryboardPanelListProps {
   storyboardId: string
   textPanels: StoryboardPanel[]
   storyboardStartIndex: number
   videoRatio: string
+  panelEdits: Record<string, PanelEditData>
+  panelCandidateIndex: Map<string, unknown>
   isSubmittingStoryboardTextTask: boolean
   savingPanels: Set<string>
   deletingPanelIds: Set<string>
   saveStateByPanel: Record<string, PanelSaveState>
   hasUnsavedByPanel: Set<string>
+  uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   panelTaskErrorMap: Map<string, { taskId: string; message: string }>
   isPanelTaskRunning: (panel: StoryboardPanel) => boolean
@@ -31,6 +44,8 @@ interface StoryboardPanelListProps {
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onUploadPanelImage: (panelId: string, file: File) => Promise<void>
+  onOpenSourcePanelPicker: (panelId: string) => void
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
   onSelectPanelCandidateIndex: (panelId: string, index: number) => void
@@ -43,40 +58,75 @@ interface StoryboardPanelListProps {
   isInsertDisabled: (panelId: string) => boolean
 }
 
-export default function StoryboardPanelList({
-  storyboardId,
-  textPanels,
-  storyboardStartIndex,
-  videoRatio,
-  isSubmittingStoryboardTextTask,
-  savingPanels,
-  deletingPanelIds,
-  saveStateByPanel,
-  hasUnsavedByPanel,
-  modifyingPanels,
-  panelTaskErrorMap,
-  isPanelTaskRunning,
-  getPanelEditData,
-  getPanelCandidates,
-  onPanelUpdate,
-  onPanelDelete,
-  onOpenCharacterPicker,
-  onOpenLocationPicker,
-  onRemoveCharacter,
-  onRemoveLocation,
-  onRetryPanelSave,
-  onRegeneratePanelImage,
-  onOpenEditModal,
-  onOpenAIDataModal,
-  onSelectPanelCandidateIndex,
-  onConfirmPanelCandidate,
-  onCancelPanelCandidate,
-  onClearPanelTaskError,
-  onPreviewImage,
-  onInsertAfter,
-  onVariant,
-  isInsertDisabled,
-}: StoryboardPanelListProps) {
+function areStoryboardPanelListPropsEqual(previous: StoryboardPanelListProps, next: StoryboardPanelListProps) {
+  if (
+    previous.storyboardId !== next.storyboardId ||
+    previous.textPanels !== next.textPanels ||
+    previous.storyboardStartIndex !== next.storyboardStartIndex ||
+    previous.videoRatio !== next.videoRatio ||
+    previous.isSubmittingStoryboardTextTask !== next.isSubmittingStoryboardTextTask ||
+    previous.savingPanels !== next.savingPanels ||
+    previous.deletingPanelIds !== next.deletingPanelIds ||
+    previous.saveStateByPanel !== next.saveStateByPanel ||
+    previous.hasUnsavedByPanel !== next.hasUnsavedByPanel ||
+    previous.uploadingPanels !== next.uploadingPanels ||
+    previous.modifyingPanels !== next.modifyingPanels ||
+    previous.panelTaskErrorMap !== next.panelTaskErrorMap
+  ) {
+    return false
+  }
+
+  for (const panel of next.textPanels) {
+    if (previous.panelEdits[panel.id] !== next.panelEdits[panel.id]) {
+      return false
+    }
+    if (previous.panelCandidateIndex.get(panel.id) !== next.panelCandidateIndex.get(panel.id)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function StoryboardPanelList(props: StoryboardPanelListProps) {
+  const {
+    storyboardId,
+    textPanels,
+    storyboardStartIndex,
+    videoRatio,
+    isSubmittingStoryboardTextTask,
+    savingPanels,
+    deletingPanelIds,
+    saveStateByPanel,
+    hasUnsavedByPanel,
+    uploadingPanels,
+    modifyingPanels,
+    panelTaskErrorMap,
+    isPanelTaskRunning,
+    getPanelEditData,
+    getPanelCandidates,
+    onPanelUpdate,
+    onPanelDelete,
+    onOpenCharacterPicker,
+    onOpenLocationPicker,
+    onRemoveCharacter,
+    onRemoveLocation,
+    onRetryPanelSave,
+    onRegeneratePanelImage,
+    onUploadPanelImage,
+    onOpenSourcePanelPicker,
+    onOpenEditModal,
+    onOpenAIDataModal,
+    onSelectPanelCandidateIndex,
+    onConfirmPanelCandidate,
+    onCancelPanelCandidate,
+    onClearPanelTaskError,
+    onPreviewImage,
+    onInsertAfter,
+    onVariant,
+    isInsertDisabled,
+  } = props
+
   const displayImages = useMemo(() => textPanels.map((panel) => panel.imageUrl || null), [textPanels])
   const isVertical = ASPECT_RATIO_CONFIGS[videoRatio]?.isVertical ?? false
 
@@ -106,7 +156,10 @@ export default function StoryboardPanelList({
           <div
             key={panel.id || index}
             className="relative group/panel h-full"
-            style={{ zIndex: textPanels.length - index }}
+            style={{
+              zIndex: textPanels.length - index,
+              ...(isVertical ? VERTICAL_PANEL_STYLE : HORIZONTAL_PANEL_STYLE),
+            }}
           >
             <PanelCard
               panel={panel}
@@ -119,6 +172,7 @@ export default function StoryboardPanelList({
               hasUnsavedChanges={hasUnsavedChanges}
               saveErrorMessage={panelSaveError}
               isDeleting={isPanelDeleting}
+              isUploadingImage={uploadingPanels.has(panel.id)}
               isModifying={isPanelModifying}
               isSubmittingPanelImageTask={panelTaskRunning}
               failedError={panelFailedError}
@@ -131,6 +185,8 @@ export default function StoryboardPanelList({
               onRemoveCharacter={(characterIndex) => onRemoveCharacter(panel, characterIndex)}
               onRemoveLocation={() => onRemoveLocation(panel)}
               onRegeneratePanelImage={onRegeneratePanelImage}
+              onUploadImage={onUploadPanelImage}
+              onOpenSourcePanelPicker={() => onOpenSourcePanelPicker(panel.id)}
               onOpenEditModal={() => onOpenEditModal(index)}
               onOpenAIDataModal={() => onOpenAIDataModal(index)}
               onSelectCandidateIndex={onSelectPanelCandidateIndex}
@@ -148,3 +204,5 @@ export default function StoryboardPanelList({
     </div>
   )
 }
+
+export default memo(StoryboardPanelList, areStoryboardPanelListPropsEqual)

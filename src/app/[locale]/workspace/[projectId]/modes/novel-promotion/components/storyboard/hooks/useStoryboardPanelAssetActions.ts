@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Character, Location, NovelPromotionClip, NovelPromotionStoryboard } from '@/types/project'
 import { PanelEditData } from '../../PanelEditForm'
 import { SelectedAsset } from './useImageGeneration'
@@ -80,6 +80,18 @@ export function useStoryboardPanelAssetActions({
   assetPickerPanel,
   setAssetPickerPanel,
 }: UseStoryboardPanelAssetActionsProps) {
+  const panelRuntimeById = useMemo(() => {
+    const runtimeById = new Map<string, { storyboardId: string; panel: StoryboardPanel }>()
+
+    localStoryboards.forEach((storyboard) => {
+      getTextPanels(storyboard).forEach((panel) => {
+        runtimeById.set(panel.id, { storyboardId: storyboard.id, panel })
+      })
+    })
+
+    return runtimeById
+  }, [getTextPanels, localStoryboards])
+
   const getDefaultAssetsForClip = useCallback(
     (clipId: string): SelectedAsset[] =>
       buildDefaultAssetsForClip({ clipId, clips, characters, locations }),
@@ -99,27 +111,29 @@ export function useStoryboardPanelAssetActions({
   const handlePanelUpdate = useCallback(
     (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => {
       updatePanelEdit(panelId, panel, updates)
-      const storyboard = localStoryboards.find((item) => getTextPanels(item).some((itemPanel) => itemPanel.id === panelId))
-      if (storyboard) {
-        debouncedSave(panelId, storyboard.id)
+      const panelRuntime = panelRuntimeById.get(panelId)
+      if (panelRuntime) {
+        debouncedSave(panelId, panelRuntime.storyboardId)
       }
     },
-    [debouncedSave, getTextPanels, localStoryboards, updatePanelEdit],
+    [debouncedSave, panelRuntimeById, updatePanelEdit],
   )
 
   const handleAddCharacter = useCallback(
     (characterName: string, appearance: string) => {
       if (!assetPickerPanel || assetPickerPanel.type !== 'character') return
 
-      const storyboard = localStoryboards.find((item) =>
-        getTextPanels(item).some((panel) => panel.id === assetPickerPanel.panelId),
-      )
-      const panel = storyboard
-        ? getTextPanels(storyboard).find((item) => item.id === assetPickerPanel.panelId)
-        : null
+      const panelRuntime = panelRuntimeById.get(assetPickerPanel.panelId)
 
-      if (storyboard && panel) {
-        addCharacterToPanel(panel, characterName, appearance, storyboard.id, getPanelEditData, updatePanelEdit)
+      if (panelRuntime) {
+        addCharacterToPanel(
+          panelRuntime.panel,
+          characterName,
+          appearance,
+          panelRuntime.storyboardId,
+          getPanelEditData,
+          updatePanelEdit,
+        )
       }
       setAssetPickerPanel(null)
     },
@@ -127,8 +141,7 @@ export function useStoryboardPanelAssetActions({
       addCharacterToPanel,
       assetPickerPanel,
       getPanelEditData,
-      getTextPanels,
-      localStoryboards,
+      panelRuntimeById,
       setAssetPickerPanel,
       updatePanelEdit,
     ],
@@ -138,19 +151,14 @@ export function useStoryboardPanelAssetActions({
     (locationName: string) => {
       if (!assetPickerPanel || assetPickerPanel.type !== 'location') return
 
-      const storyboard = localStoryboards.find((item) =>
-        getTextPanels(item).some((panel) => panel.id === assetPickerPanel.panelId),
-      )
-      const panel = storyboard
-        ? getTextPanels(storyboard).find((item) => item.id === assetPickerPanel.panelId)
-        : null
+      const panelRuntime = panelRuntimeById.get(assetPickerPanel.panelId)
 
-      if (storyboard && panel) {
-        setPanelLocation(panel, locationName, storyboard.id, updatePanelEdit)
+      if (panelRuntime) {
+        setPanelLocation(panelRuntime.panel, locationName, panelRuntime.storyboardId, updatePanelEdit)
       }
       setAssetPickerPanel(null)
     },
-    [assetPickerPanel, getTextPanels, localStoryboards, setAssetPickerPanel, setPanelLocation, updatePanelEdit],
+    [assetPickerPanel, panelRuntimeById, setAssetPickerPanel, setPanelLocation, updatePanelEdit],
   )
 
   const handleRemoveCharacter = useCallback(

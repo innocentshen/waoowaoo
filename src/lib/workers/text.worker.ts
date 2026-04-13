@@ -36,6 +36,7 @@ import { handleAssetHubAIModifyTask } from './handlers/asset-hub-ai-modify'
 import { handleReferenceToCharacterTask } from './handlers/reference-to-character'
 import { handleShotAITask } from './handlers/shot-ai-tasks'
 import { handleCharacterProfileTask } from './handlers/character-profile'
+import { findProjectBaseById } from '@/lib/projects/project-read'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -343,7 +344,7 @@ async function handleRegenerateStoryboardTextTask(job: Job<TaskJobData>) {
   if (!storyboard) throw new Error('Storyboard not found')
   if (!storyboard.clip) throw new Error('Storyboard clip not found')
 
-  const project = await prisma.project.findUnique({ where: { id: projectId } })
+  const project = await findProjectBaseById(projectId)
   if (!project) throw new Error('Project not found')
 
   const novelPromotionData = await prisma.novelPromotionProject.findUnique({

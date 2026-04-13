@@ -1,6 +1,8 @@
 import type { Job } from 'bullmq'
 import { executeAiTextStep } from '@/lib/ai-runtime'
+import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { withInternalLLMStreamCallbacks } from '@/lib/llm-observe/internal-stream-context'
+import type { ReasoningEffort } from '@/lib/llm/types'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
@@ -9,6 +11,10 @@ import { createWorkerLLMStreamCallbacks, createWorkerLLMStreamContext } from './
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
 }
 
 export async function handleAiStoryExpandTask(job: Job<TaskJobData>) {
@@ -30,6 +36,15 @@ export async function handleAiStoryExpandTask(job: Job<TaskJobData>) {
       input: promptInput,
     },
   })
+  const llmCapabilityOptions = await resolveProjectModelCapabilityGenerationOptions({
+    projectId: job.data.projectId || 'home-ai-write',
+    userId: job.data.userId,
+    modelType: 'llm',
+    modelKey: analysisModel,
+  })
+  const reasoningEffort = isReasoningEffort(llmCapabilityOptions.reasoningEffort)
+    ? llmCapabilityOptions.reasoningEffort
+    : undefined
 
   await reportTaskProgress(job, 25, {
     stage: 'ai_story_expand_prepare',
@@ -49,6 +64,7 @@ export async function handleAiStoryExpandTask(job: Job<TaskJobData>) {
         model: analysisModel,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
+        reasoningEffort,
         projectId: job.data.projectId || 'home-ai-write',
         action: 'ai_story_expand',
         meta: {

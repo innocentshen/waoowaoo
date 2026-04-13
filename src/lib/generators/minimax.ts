@@ -162,6 +162,9 @@ function validateResolutionAndDuration(input: {
 
 export class MinimaxVideoGenerator extends BaseVideoGenerator {
     protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
+        if (!params.imageUrl) {
+            throw new Error('MINIMAX_VIDEO_INPUT_REQUIRED: imageUrl')
+        }
         const { userId, imageUrl, prompt = '', options = {} } = params
 
         const { apiKey } = await getProviderConfig(userId, 'minimax')

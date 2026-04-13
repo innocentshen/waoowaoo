@@ -38,6 +38,28 @@ describe('expandHomeStory', () => {
     })
   })
 
+  it('includes projectId when the caller is inside a project workspace', async () => {
+    const apiFetch = vi.fn(async () => buildJsonResponse({ async: true, taskId: 'task-1' }))
+    vi.mocked(resolveTaskResponse).mockResolvedValue({
+      expandedText: 'expanded story text',
+    })
+
+    await expandHomeStory({
+      apiFetch,
+      prompt: 'prompt text',
+      projectId: 'project-1',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/api/user/ai-story-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'prompt text',
+        projectId: 'project-1',
+      }),
+    })
+  })
+
   it('fails explicitly when the route does not return expandedText', async () => {
     const apiFetch = vi.fn(async () => buildJsonResponse({ async: true, taskId: 'task-1' }))
     vi.mocked(resolveTaskResponse).mockResolvedValue({})
