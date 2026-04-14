@@ -51,8 +51,13 @@ interface PanelCardProps {
   onUndo?: (panelId: string) => void
   onPreviewImage?: (url: string) => void
   onInsertAfter?: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  canMoveUp?: boolean
+  canMoveDown?: boolean
   onVariant?: () => void
   isInsertDisabled?: boolean
+  isMoveDisabled?: boolean
 }
 
 function areCandidateDataEqual(previous: PanelCandidateData | null, next: PanelCandidateData | null) {
@@ -82,7 +87,10 @@ function arePanelCardPropsEqual(previous: PanelCardProps, next: PanelCardProps) 
     previous.failedError === next.failedError &&
     areCandidateDataEqual(previous.candidateData, next.candidateData) &&
     previous.previousImageUrl === next.previousImageUrl &&
-    previous.isInsertDisabled === next.isInsertDisabled
+    previous.isInsertDisabled === next.isInsertDisabled &&
+    previous.canMoveUp === next.canMoveUp &&
+    previous.canMoveDown === next.canMoveDown &&
+    previous.isMoveDisabled === next.isMoveDisabled
   )
 }
 
@@ -122,8 +130,13 @@ function PanelCard({
   onUndo,
   onPreviewImage,
   onInsertAfter,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
   onVariant,
   isInsertDisabled,
+  isMoveDisabled,
 }: PanelCardProps) {
   const t = useTranslations('storyboard')
 
@@ -171,12 +184,16 @@ function PanelCard({
           onPreviewImage={onPreviewImage}
         />
 
-        {(onInsertAfter || onVariant) && (
+        {(onInsertAfter || onVariant || onMoveUp || onMoveDown) && (
           <div className="pointer-events-none absolute right-2 top-1/2 z-30 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover/panel-image:pointer-events-auto group-hover/panel-image:opacity-100 group-focus-within/panel-image:pointer-events-auto group-focus-within/panel-image:opacity-100">
             <PanelActionButtons
               onInsertPanel={onInsertAfter || (() => {})}
+              onMoveUp={onMoveUp || (() => {})}
+              onMoveDown={onMoveDown || (() => {})}
+              canMoveUp={canMoveUp ?? false}
+              canMoveDown={canMoveDown ?? false}
               onVariant={onVariant || (() => {})}
-              disabled={isInsertDisabled}
+              disabled={isInsertDisabled || isMoveDisabled}
               hasImage={!!imageUrl}
             />
           </div>

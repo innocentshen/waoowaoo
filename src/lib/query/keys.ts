@@ -52,6 +52,7 @@ export const queryKeys = {
         all: (episodeId: string) => ['storyboards', episodeId] as const,
         panels: (episodeId: string) => ['storyboards', episodeId, 'panels'] as const,
         groups: (episodeId: string) => ['storyboards', episodeId, 'groups'] as const,
+        sources: (projectId: string, episodeId: string) => ['storyboard-sources', projectId, episodeId] as const,
     },
 
     // ============ 视频生成 ============

@@ -97,11 +97,16 @@ export function useVideoPanelActions({
     hasVisibleBaseVideo,
     tCommon: (key: string) => tCommon(key as never),
   })
+  const preferredSelection = useMemo(
+    () => (videoRatio ? { aspectRatio: videoRatio } : undefined),
+    [videoRatio],
+  )
 
   const videoModel = usePanelVideoModel({
     defaultVideoModel,
     capabilityOverrides,
     userVideoModels,
+    preferredSelection,
     onPersistSelectedModel: (modelKey) => onUpdatePanelVideoModel(panel.storyboardId, panel.panelIndex, modelKey),
     onPersistGenerationOptions: onUpdateVideoGenerationOptions,
   })

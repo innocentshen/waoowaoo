@@ -185,9 +185,11 @@ export function normalizeVideoGenerationSelections(input: {
   pricingTiers?: VideoPricingTier[]
   selection?: Record<string, CapabilityValue>
   pinnedFields?: string[]
+  preferredSelection?: Record<string, CapabilityValue>
 }): Record<string, CapabilityValue> {
   const tiers = input.pricingTiers || []
   const normalized = filterSelectionByDefinitions(input.definitions, input.selection)
+  const preferredSelection = filterSelectionByDefinitions(input.definitions, input.preferredSelection)
   const pinnedFieldSet = new Set(input.pinnedFields || [])
   const orderedDefinitions = input.definitions.slice().sort((left, right) => {
     const leftPinned = pinnedFieldSet.has(left.field)
@@ -223,7 +225,10 @@ export function normalizeVideoGenerationSelections(input: {
       }
 
       if (current === undefined || !compatibleOptions.includes(current)) {
-        normalized[definition.field] = compatibleOptions[0]
+        const preferredValue = preferredSelection[definition.field]
+        normalized[definition.field] = preferredValue !== undefined && compatibleOptions.includes(preferredValue)
+          ? preferredValue
+          : compatibleOptions[0]
         changed = true
       }
     }
@@ -236,12 +241,14 @@ export function resolveEffectiveVideoCapabilityFields(input: {
   definitions: EffectiveVideoCapabilityDefinition[]
   pricingTiers?: VideoPricingTier[]
   selection?: Record<string, CapabilityValue>
+  preferredSelection?: Record<string, CapabilityValue>
 }): EffectiveVideoCapabilityField[] {
   const tiers = input.pricingTiers || []
   const normalized = normalizeVideoGenerationSelections({
     definitions: input.definitions,
     pricingTiers: tiers,
     selection: input.selection,
+    preferredSelection: input.preferredSelection,
   })
 
   return input.definitions.map((definition) => {

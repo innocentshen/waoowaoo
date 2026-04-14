@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query/keys'
 import { NovelPromotionStoryboard, NovelPromotionClip, NovelPromotionPanel } from '@/types/project'
@@ -204,6 +204,38 @@ export function useStoryboardState({
 
     return panelEditDataById
   }, [textPanelsByStoryboardId])
+
+  useEffect(() => {
+    setPanelEdits((previous) => {
+      let changed = false
+      const next: Record<string, PanelEditData> = {}
+
+      for (const [panelId, currentEdit] of Object.entries(previous)) {
+        const latestBase = basePanelEditDataById.get(panelId)
+        if (!latestBase) {
+          changed = true
+          continue
+        }
+
+        const syncedEdit =
+          currentEdit.panelIndex !== latestBase.panelIndex || currentEdit.panelNumber !== latestBase.panelNumber
+            ? {
+              ...currentEdit,
+              panelIndex: latestBase.panelIndex,
+              panelNumber: latestBase.panelNumber,
+            }
+            : currentEdit
+
+        if (syncedEdit !== currentEdit) {
+          changed = true
+        }
+
+        next[panelId] = syncedEdit
+      }
+
+      return changed ? next : previous
+    })
+  }, [basePanelEditDataById])
 
   const getClipInfo = useCallback((clipId: string) => clipById.get(clipId), [clipById])
 

@@ -87,6 +87,21 @@ function parseBySample(input: string, sample: CapabilityValue): CapabilityValue 
     return input
 }
 
+function resolveCapabilityDefaultValue(
+    field: string,
+    options: CapabilityValue[],
+    preferredValue?: string,
+): CapabilityValue | undefined {
+    if (
+        field === 'aspectRatio'
+        && preferredValue
+        && options.includes(preferredValue)
+    ) {
+        return preferredValue
+    }
+    return resolvePreferredCapabilityDefault(field, options)
+}
+
 function extractCapabilityFields(
     capabilities: ModelCapabilities | undefined,
     namespace: 'llm' | 'image' | 'video' | 'audio',
@@ -270,6 +285,25 @@ export function SettingsModal({
         showSaved()
     }
 
+    const syncVideoAspectRatioOverride = (nextVideoRatio: string) => {
+        if (!videoModel || !onCapabilityOverridesChange || !selectedVideoModelOption) return
+
+        const aspectRatioField = extractCapabilityFields(selectedVideoModelOption.capabilities, 'video')
+            .find((field) => field.field === 'aspectRatio')
+        if (!aspectRatioField || !aspectRatioField.options.includes(nextVideoRatio)) return
+
+        const nextOverrides: CapabilitySelections = {
+            ...(capabilityOverrides || {}),
+        }
+        const currentSelection = isRecord(nextOverrides[videoModel])
+            ? { ...(nextOverrides[videoModel] as Record<string, CapabilityValue>) }
+            : {}
+
+        currentSelection.aspectRatio = nextVideoRatio
+        nextOverrides[videoModel] = currentSelection
+        onCapabilityOverridesChange(nextOverrides)
+    }
+
     /**
      * 切换模型时，自动将该模型所有 capability fields 的第一个 option 写入 overrides
      * 解决 UI 视觉上显示默认选中（第一项高亮）但 DB 实际为空，导致 requireAllFields 报错的问题
@@ -294,7 +328,11 @@ export function SettingsModal({
         // 只对尚未配置的 field 设置默认值（不覆盖已有配置）
         let changed = false
         for (const def of capabilityFieldsForModel) {
-            const defaultOption = resolvePreferredCapabilityDefault(def.field, def.options)
+            const defaultOption = resolveCapabilityDefaultValue(
+                def.field,
+                def.options,
+                namespace === 'video' ? videoRatio : undefined,
+            )
             if (existing[def.field] === undefined && defaultOption !== undefined) {
                 existing[def.field] = defaultOption
                 changed = true
@@ -321,6 +359,12 @@ export function SettingsModal({
     const showSaved = () => {
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 2000)
+    }
+
+    const handleVideoRatioChange = (value: string) => {
+        onVideoRatioChange?.(value)
+        syncVideoAspectRatioOverride(value)
+        showSaved()
     }
 
     const handleChange = (callback?: (value: string) => void) => (value: string) => {
@@ -382,7 +426,7 @@ export function SettingsModal({
                                 <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('aspectRatio')}</label>
                                 <RatioSelector
                                     value={videoRatio}
-                                    onChange={(value) => { handleChange(onVideoRatioChange)(value) }}
+                                    onChange={handleVideoRatioChange}
                                     options={VIDEO_RATIOS}
                                 />
                             </div>

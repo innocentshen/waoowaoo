@@ -6,6 +6,7 @@ import { StoryboardPanel } from './hooks/useStoryboardState'
 import { PanelEditData } from '../PanelEditForm'
 import { ASPECT_RATIO_CONFIGS } from '@/lib/constants'
 import PanelCard from './PanelCard'
+import InsertPanelButton from './InsertPanelButton'
 import type { PanelSaveState } from './hooks/usePanelCrudActions'
 
 const VERTICAL_PANEL_STYLE = {
@@ -53,9 +54,13 @@ interface StoryboardPanelListProps {
   onCancelPanelCandidate: (panelId: string) => void
   onClearPanelTaskError: (panelId: string) => void
   onPreviewImage: (url: string) => void
+  onInsertBetween: (panelId: string) => void
   onInsertAfter: (panelIndex: number) => void
+  onMoveUp: (panelId: string) => void
+  onMoveDown: (panelId: string) => void
   onVariant: (panelIndex: number) => void
   isInsertDisabled: (panelId: string) => boolean
+  isMoveDisabled: (panelId: string) => boolean
 }
 
 function areStoryboardPanelListPropsEqual(previous: StoryboardPanelListProps, next: StoryboardPanelListProps) {
@@ -122,9 +127,13 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
     onCancelPanelCandidate,
     onClearPanelTaskError,
     onPreviewImage,
+    onInsertBetween,
     onInsertAfter,
+    onMoveUp,
+    onMoveDown,
     onVariant,
     isInsertDisabled,
+    isMoveDisabled,
   } = props
 
   const displayImages = useMemo(() => textPanels.map((panel) => panel.imageUrl || null), [textPanels])
@@ -155,49 +164,65 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
         return (
           <div
             key={panel.id || index}
-            className="relative group/panel h-full"
+            className="relative group/panel flex h-full flex-col"
             style={{
               zIndex: textPanels.length - index,
               ...(isVertical ? VERTICAL_PANEL_STYLE : HORIZONTAL_PANEL_STYLE),
             }}
           >
-            <PanelCard
-              panel={panel}
-              panelData={panelData}
-              imageUrl={imageUrl}
-              globalPanelNumber={globalPanelNumber}
-              storyboardId={storyboardId}
-              videoRatio={videoRatio}
-              isSaving={isPanelSaving}
-              hasUnsavedChanges={hasUnsavedChanges}
-              saveErrorMessage={panelSaveError}
-              isDeleting={isPanelDeleting}
-              isUploadingImage={uploadingPanels.has(panel.id)}
-              isModifying={isPanelModifying}
-              isSubmittingPanelImageTask={panelTaskRunning}
-              failedError={panelFailedError}
-              candidateData={panelCandidateData}
-              onUpdate={(updates) => onPanelUpdate(panel.id, panel, updates)}
-              onDelete={() => onPanelDelete(panel.id)}
-              onOpenCharacterPicker={() => onOpenCharacterPicker(panel.id)}
-              onOpenLocationPicker={() => onOpenLocationPicker(panel.id)}
-              onRetrySave={() => onRetryPanelSave(panel.id)}
-              onRemoveCharacter={(characterIndex) => onRemoveCharacter(panel, characterIndex)}
-              onRemoveLocation={() => onRemoveLocation(panel)}
-              onRegeneratePanelImage={onRegeneratePanelImage}
-              onUploadImage={onUploadPanelImage}
-              onOpenSourcePanelPicker={() => onOpenSourcePanelPicker(panel.id)}
-              onOpenEditModal={() => onOpenEditModal(index)}
-              onOpenAIDataModal={() => onOpenAIDataModal(index)}
-              onSelectCandidateIndex={onSelectPanelCandidateIndex}
-              onConfirmCandidate={onConfirmPanelCandidate}
-              onCancelCandidate={onCancelPanelCandidate}
-              onClearError={() => onClearPanelTaskError(panel.id)}
-              onPreviewImage={onPreviewImage}
-              onInsertAfter={() => onInsertAfter(index)}
-              onVariant={() => onVariant(index)}
-              isInsertDisabled={isInsertDisabled(panel.id)}
-            />
+            <div className="flex-1">
+              <PanelCard
+                panel={panel}
+                panelData={panelData}
+                imageUrl={imageUrl}
+                globalPanelNumber={globalPanelNumber}
+                storyboardId={storyboardId}
+                videoRatio={videoRatio}
+                isSaving={isPanelSaving}
+                hasUnsavedChanges={hasUnsavedChanges}
+                saveErrorMessage={panelSaveError}
+                isDeleting={isPanelDeleting}
+                isUploadingImage={uploadingPanels.has(panel.id)}
+                isModifying={isPanelModifying}
+                isSubmittingPanelImageTask={panelTaskRunning}
+                failedError={panelFailedError}
+                candidateData={panelCandidateData}
+                onUpdate={(updates) => onPanelUpdate(panel.id, panel, updates)}
+                onDelete={() => onPanelDelete(panel.id)}
+                onOpenCharacterPicker={() => onOpenCharacterPicker(panel.id)}
+                onOpenLocationPicker={() => onOpenLocationPicker(panel.id)}
+                onRetrySave={() => onRetryPanelSave(panel.id)}
+                onRemoveCharacter={(characterIndex) => onRemoveCharacter(panel, characterIndex)}
+                onRemoveLocation={() => onRemoveLocation(panel)}
+                onRegeneratePanelImage={onRegeneratePanelImage}
+                onUploadImage={onUploadPanelImage}
+                onOpenSourcePanelPicker={() => onOpenSourcePanelPicker(panel.id)}
+                onOpenEditModal={() => onOpenEditModal(index)}
+                onOpenAIDataModal={() => onOpenAIDataModal(index)}
+                onSelectCandidateIndex={onSelectPanelCandidateIndex}
+                onConfirmCandidate={onConfirmPanelCandidate}
+                onCancelCandidate={onCancelPanelCandidate}
+                onClearError={() => onClearPanelTaskError(panel.id)}
+                onPreviewImage={onPreviewImage}
+                onInsertAfter={() => onInsertAfter(index)}
+                onMoveUp={() => onMoveUp(panel.id)}
+                onMoveDown={() => onMoveDown(panel.id)}
+                canMoveUp={index > 0}
+                canMoveDown={index < textPanels.length - 1}
+                onVariant={() => onVariant(index)}
+                isInsertDisabled={isInsertDisabled(panel.id)}
+                isMoveDisabled={isMoveDisabled(panel.id)}
+              />
+            </div>
+
+            {index < textPanels.length - 1 && (
+              <div className="flex justify-center py-3">
+                <InsertPanelButton
+                  onClick={() => onInsertBetween(panel.id)}
+                  disabled={isInsertDisabled(panel.id)}
+                />
+              </div>
+            )}
           </div>
         )
       })}

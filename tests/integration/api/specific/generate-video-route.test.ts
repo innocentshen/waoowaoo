@@ -32,6 +32,10 @@ const hasPanelVideoOutputMock = vi.hoisted(() => vi.fn(async () => false))
 const billingMock = vi.hoisted(() =>
   vi.fn((_taskType: string, payload: unknown) => ({ mode: 'default', payload })),
 )
+const resolveProjectModelCapabilityGenerationOptionsMock = vi.hoisted(() =>
+  vi.fn(async ({ runtimeSelections }: { runtimeSelections: Record<string, unknown> }) => runtimeSelections),
+)
+const resolveBuiltinCapabilitiesByModelKeyMock = vi.hoisted(() => vi.fn(() => null))
 
 vi.mock('@/lib/api-auth', () => authMock)
 vi.mock('@/lib/task/submitter', () => ({ submitTask: submitTaskMock }))
@@ -53,13 +57,13 @@ vi.mock('@/lib/model-config-contract', () => ({
   }),
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
-  resolveBuiltinCapabilitiesByModelKey: vi.fn(() => null),
+  resolveBuiltinCapabilitiesByModelKey: resolveBuiltinCapabilitiesByModelKeyMock,
 }))
 vi.mock('@/lib/model-pricing/lookup', () => ({
   resolveBuiltinPricing: vi.fn(() => ({ status: 'ok' })),
 }))
 vi.mock('@/lib/config-service', () => ({
-  resolveProjectModelCapabilityGenerationOptions: vi.fn(async ({ runtimeSelections }: { runtimeSelections: Record<string, unknown> }) => runtimeSelections),
+  resolveProjectModelCapabilityGenerationOptions: resolveProjectModelCapabilityGenerationOptionsMock,
 }))
 
 async function invokeRoute(body: Record<string, unknown>) {
@@ -84,6 +88,10 @@ describe('api specific - generate video route', () => {
       { id: 'panel-1' },
       { id: 'panel-2' },
     ])
+    resolveProjectModelCapabilityGenerationOptionsMock.mockImplementation(
+      async ({ runtimeSelections }: { runtimeSelections: Record<string, unknown> }) => runtimeSelections,
+    )
+    resolveBuiltinCapabilitiesByModelKeyMock.mockReturnValue(null)
   })
 
   it('submits multiple single-panel tasks when count is greater than one', async () => {
@@ -196,6 +204,38 @@ describe('api specific - generate video route', () => {
         mode: 'edit',
         sourceCandidateId: 'candidate-1',
         instruction: 'make the movement more subtle',
+      },
+    }))
+  })
+
+  it('injects resolved aspect ratio into submitted payload and billing when the request omits it', async () => {
+    resolveBuiltinCapabilitiesByModelKeyMock.mockReturnValue({ video: {} } as never)
+    resolveProjectModelCapabilityGenerationOptionsMock.mockResolvedValue({
+      aspectRatio: '9:16',
+      resolution: '720p',
+    })
+
+    const res = await invokeRoute({
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      videoModel: 'fal::seedance/video',
+      generationOptions: {
+        resolution: '720p',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const payload = submitTaskMock.mock.calls[0]?.[0]?.payload as Record<string, unknown>
+    expect(payload).toEqual(expect.objectContaining({
+      generationOptions: {
+        aspectRatio: '9:16',
+        resolution: '720p',
+      },
+    }))
+    expect(billingMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      generationOptions: {
+        aspectRatio: '9:16',
+        resolution: '720p',
       },
     }))
   })

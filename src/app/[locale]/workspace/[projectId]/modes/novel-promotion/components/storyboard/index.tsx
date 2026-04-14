@@ -1,11 +1,13 @@
 'use client'
 
+import { useMemo } from 'react'
 import { NovelPromotionStoryboard, NovelPromotionClip } from '@/types/project'
+import { usePreviousEpisodeStoryboardSources, type StoryboardSourceStoryboard } from '@/lib/query/hooks'
 import { CharacterPickerModal, LocationPickerModal } from '../PanelEditForm'
 import ImageEditModal from './ImageEditModal'
 import AIDataModal from './AIDataModal'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
-import SelectStoryboardPanelImageModal from './SelectStoryboardPanelImageModal'
+import SelectStoryboardPanelImageModal, { type StoryboardSourceOptionGroup } from './SelectStoryboardPanelImageModal'
 import StoryboardStageShell from './StoryboardStageShell'
 import StoryboardToolbar from './StoryboardToolbar'
 import StoryboardCanvas from './StoryboardCanvas'
@@ -21,6 +23,20 @@ interface StoryboardStageProps {
   onBack: () => void
   onNext: () => void
   isTransitioning?: boolean
+}
+
+function formatSourceStoryboardClipTitle(storyboard: StoryboardSourceStoryboard): string {
+  const clip = storyboard.clip
+  if (!clip) return '-'
+  if (clip.start !== undefined && clip.start !== null) {
+    return `${clip.start}-${clip.end}`
+  }
+  if (clip.startText && clip.endText) {
+    const startPreview = clip.startText.substring(0, 10)
+    const endPreview = clip.endText.substring(0, 10)
+    return `${startPreview}...~...${endPreview}`
+  }
+  return clip.id.slice(0, 8)
 }
 
 export default function StoryboardStage({
@@ -58,6 +74,10 @@ export default function StoryboardStage({
 
     savingPanels,
     deletingPanelIds,
+    movingPanelId,
+    creatingPanelAfterId,
+    creatingPanelStoryboardId,
+    isCreatingPanel,
     saveStateByPanel,
     hasUnsavedByPanel,
     submittingStoryboardTextIds,
@@ -66,6 +86,7 @@ export default function StoryboardStage({
     insertingAfterPanelId,
     savePanelWithData,
     addPanel,
+    movePanel,
     deletePanel,
     deleteStoryboard,
     regenerateStoryboardText,
@@ -126,6 +147,12 @@ export default function StoryboardStage({
     handleGenerateAllPanels,
   } = controller
 
+  const { data: previousStoryboardSourcesData, isLoading: isLoadingPreviousStoryboardSources } = usePreviousEpisodeStoryboardSources(
+    projectId,
+    episodeId,
+    !!sourcePanelPickerPanelId,
+  )
+
   const modalRuntime = useStoryboardModalRuntime({
     projectId,
     videoRatio,
@@ -149,6 +176,29 @@ export default function StoryboardStage({
     updatePhotographyPlanMutation,
     updatePanelActingNotesMutation,
   })
+
+  const storyboardSourceOptions = useMemo<StoryboardSourceOptionGroup[]>(() => {
+    const currentStoryboards = sortedStoryboards.map((storyboard) => ({
+      ...storyboard,
+      sourceClipTitle: formatClipTitle(getClipInfo(storyboard.clipId)),
+    }))
+
+    const previousStoryboards = (previousStoryboardSourcesData?.storyboards || []).map((storyboard: StoryboardSourceStoryboard) => {
+      const clipTitle = formatSourceStoryboardClipTitle(storyboard)
+      const episodeNumber = storyboard.episode?.episodeNumber
+      return {
+        ...storyboard,
+        sourceClipTitle: episodeNumber ? `第${episodeNumber}集 · ${clipTitle}` : clipTitle,
+      }
+    })
+
+    return [...currentStoryboards, ...previousStoryboards]
+  }, [
+    formatClipTitle,
+    getClipInfo,
+    previousStoryboardSourcesData?.storyboards,
+    sortedStoryboards,
+  ])
 
   return (
       <StoryboardStageShell
@@ -183,6 +233,10 @@ export default function StoryboardStage({
           submittingStoryboardTextIds={submittingStoryboardTextIds}
           savingPanels={savingPanels}
           deletingPanelIds={deletingPanelIds}
+          movingPanelId={movingPanelId}
+          creatingPanelAfterId={creatingPanelAfterId}
+          creatingPanelStoryboardId={creatingPanelStoryboardId}
+          isCreatingPanel={isCreatingPanel}
           saveStateByPanel={saveStateByPanel}
           hasUnsavedByPanel={hasUnsavedByPanel}
           uploadingPanels={uploadingPanels}
@@ -203,6 +257,7 @@ export default function StoryboardStage({
           onMoveStoryboardGroup={moveStoryboardGroup}
           onRegenerateStoryboardText={regenerateStoryboardText}
           onAddPanel={addPanel}
+          onMovePanel={movePanel}
           onDeleteStoryboard={deleteStoryboard}
           onGenerateAllIndividually={regenerateAllPanelsIndividually}
           onPreviewImage={setPreviewImage}
@@ -267,10 +322,9 @@ export default function StoryboardStage({
           <SelectStoryboardPanelImageModal
             open={!!sourcePanelPickerPanelId}
             targetPanelId={sourcePanelPickerPanelId}
-            storyboards={sortedStoryboards}
+            storyboards={storyboardSourceOptions}
             videoRatio={videoRatio}
-            getTextPanels={getTextPanels}
-            getClipTitle={(storyboard) => formatClipTitle(getClipInfo(storyboard.clipId))}
+            isLoading={isLoadingPreviousStoryboardSources}
             onClose={() => setSourcePanelPickerPanelId(null)}
             onSelect={async (sourcePanelId) => {
               if (!sourcePanelPickerPanelId) return

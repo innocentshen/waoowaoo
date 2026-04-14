@@ -42,6 +42,7 @@ interface UseVideoFirstLastFrameFlowParams {
   allPanels: VideoPanel[]
   linkedPanels: Map<string, boolean>
   videoModelOptions: VideoModelOption[]
+  videoRatio?: string
   onGenerateVideo: (
     storyboardId: string,
     panelIndex: number,
@@ -70,6 +71,7 @@ export function useVideoFirstLastFrameFlow({
   allPanels,
   linkedPanels,
   videoModelOptions,
+  videoRatio,
   onGenerateVideo,
   t,
 }: UseVideoFirstLastFrameFlowParams) {
@@ -132,6 +134,13 @@ export function useVideoFirstLastFrameFlow({
     }),
     [flPricingTiers, selectedFlModelOption?.capabilities?.video],
   )
+  const preferredFlSelection = useMemo<VideoGenerationOptions>(() => {
+    const nextSelection: VideoGenerationOptions = {}
+    if (videoRatio) {
+      nextSelection.aspectRatio = videoRatio
+    }
+    return nextSelection
+  }, [videoRatio])
 
   useEffect(() => {
     setFlGenerationOptions((previous) => {
@@ -139,17 +148,19 @@ export function useVideoFirstLastFrameFlow({
         definitions: flCapabilityDefinitions,
         pricingTiers: flPricingTiers,
         selection: previous,
+        preferredSelection: preferredFlSelection,
       })
     })
-  }, [flCapabilityDefinitions, flPricingTiers])
+  }, [flCapabilityDefinitions, flPricingTiers, preferredFlSelection])
 
   const flEffectiveCapabilityFields = useMemo(
     () => resolveEffectiveVideoCapabilityFields({
       definitions: flCapabilityDefinitions,
       pricingTiers: flPricingTiers,
       selection: flGenerationOptions,
+      preferredSelection: preferredFlSelection,
     }),
-    [flCapabilityDefinitions, flGenerationOptions, flPricingTiers],
+    [flCapabilityDefinitions, flGenerationOptions, flPricingTiers, preferredFlSelection],
   )
   const flEffectiveFieldMap = useMemo(
     () => new Map(flEffectiveCapabilityFields.map((field) => [field.field, field])),
@@ -196,9 +207,10 @@ export function useVideoFirstLastFrameFlow({
           [field]: parsedValue,
         },
         pinnedFields: [field],
+        preferredSelection: preferredFlSelection,
       }),
     }))
-  }, [flCapabilityDefinitions, flDefinitionFieldMap, flPricingTiers])
+  }, [flCapabilityDefinitions, flDefinitionFieldMap, flPricingTiers, preferredFlSelection])
 
   const setFlCustomPrompt = useCallback((panelKey: string, value: string) => {
     setFlCustomPrompts((previous) => new Map(previous).set(panelKey, value))

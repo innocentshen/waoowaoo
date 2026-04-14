@@ -39,6 +39,10 @@ export function usePanelOperations({
   return {
     savingPanels: panelCrud.savingPanels,
     deletingPanelIds: panelCrud.deletingPanelIds,
+    movingPanelId: panelCrud.movingPanelId,
+    creatingPanelAfterId: panelCrud.creatingPanelAfterId,
+    creatingPanelStoryboardId: panelCrud.creatingPanelStoryboardId,
+    isCreatingPanel: panelCrud.isCreatingPanel,
     saveStateByPanel: panelCrud.saveStateByPanel,
     hasUnsavedByPanel: panelCrud.hasUnsavedByPanel,
     submittingStoryboardTextIds: groupActions.submittingStoryboardTextIds,
@@ -51,6 +55,7 @@ export function usePanelOperations({
     debouncedSave: panelCrud.debouncedSave,
     retrySave: panelCrud.retrySave,
     addPanel: panelCrud.addPanel,
+    movePanel: panelCrud.movePanel,
     deletePanel: panelCrud.deletePanel,
     deleteStoryboard: groupActions.deleteStoryboard,
     regenerateStoryboardText: groupActions.regenerateStoryboardText,

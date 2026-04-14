@@ -106,6 +106,8 @@ export default function ScriptView({
   const [assetViewMode, setAssetViewMode] = useState<'all' | string>('all')
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [savingClips, setSavingClips] = useState<Set<string>>(new Set())
+  const [isPreparingStoryboardBuild, setIsPreparingStoryboardBuild] = useState(false)
+  const pendingClipSavePromisesRef = useRef(new Map<string, Promise<void>>())
 
   useEffect(() => {
     if (clips.length > 0 && !selectedClipId) {
@@ -355,18 +357,46 @@ export default function ScriptView({
   const handleClipUpdateWithSaving = async (clipId: string, data: Partial<Clip>) => {
     if (!onClipUpdate) return
     setSavingClips((prev) => new Set(prev).add(clipId))
+    const trackedPromise = (async () => {
+      try {
+        await onClipUpdate(clipId, data)
+      } finally {
+        setTimeout(() => {
+          setSavingClips((prev) => {
+            const next = new Set(prev)
+            next.delete(clipId)
+            return next
+          })
+        }, 500)
+      }
+    })()
+
+    pendingClipSavePromisesRef.current.set(clipId, trackedPromise)
     try {
-      await onClipUpdate(clipId, data)
+      await trackedPromise
     } finally {
-      setTimeout(() => {
-        setSavingClips((prev) => {
-          const next = new Set(prev)
-          next.delete(clipId)
-          return next
-        })
-      }, 500)
+      if (pendingClipSavePromisesRef.current.get(clipId) === trackedPromise) {
+        pendingClipSavePromisesRef.current.delete(clipId)
+      }
     }
   }
+
+  const waitForPendingClipSaves = useCallback(async () => {
+    const pendingSaves = Array.from(pendingClipSavePromisesRef.current.values())
+    if (pendingSaves.length === 0) return
+    await Promise.allSettled(pendingSaves)
+  }, [])
+
+  const handleGenerateStoryboardWithSavedClips = useCallback(async () => {
+    if (!onGenerateStoryboard || isPreparingStoryboardBuild) return
+    setIsPreparingStoryboardBuild(true)
+    try {
+      await waitForPendingClipSaves()
+      await onGenerateStoryboard()
+    } finally {
+      setIsPreparingStoryboardBuild(false)
+    }
+  }, [isPreparingStoryboardBuild, onGenerateStoryboard, waitForPendingClipSaves])
 
   const { allCharNames: globalCharNames, allLocNames: globalLocNames, allPropNames: globalPropNames } = getAllClipsAssets()
 
@@ -445,8 +475,8 @@ export default function ScriptView({
         globalLocationIds={globalLocationIds}
         globalPropIds={globalPropIds}
         missingAssetsCount={missingAssetsCount}
-        onGenerateStoryboard={onGenerateStoryboard}
-        isSubmittingStoryboardBuild={isSubmittingStoryboardBuild}
+        onGenerateStoryboard={handleGenerateStoryboardWithSavedClips}
+        isSubmittingStoryboardBuild={isSubmittingStoryboardBuild || isPreparingStoryboardBuild}
         getSelectedAppearances={(char) => getSelectedAppearances(char, selectedAppearanceKeys)}
         tScript={(key, values) => tScript(key, toTranslationValues(values))}
         tAssets={(key, values) => tAssets(key, toTranslationValues(values))}

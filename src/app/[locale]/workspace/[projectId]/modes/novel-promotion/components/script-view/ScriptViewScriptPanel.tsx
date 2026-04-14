@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { logWarn as _ulogWarn } from '@/lib/logging/core'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -32,6 +32,44 @@ interface ScreenplayScene {
 
 interface ScreenplayData {
   scenes: ScreenplayScene[]
+}
+
+function cloneScreenplay(screenplay: ScreenplayData): ScreenplayData {
+  return JSON.parse(JSON.stringify(screenplay)) as ScreenplayData
+}
+
+function isRenderableSceneContentItem(item: ScreenplayContentItem) {
+  if (item.type === 'dialogue') {
+    return Boolean(item.lines?.trim())
+  }
+  return Boolean(item.text?.trim())
+}
+
+function updateSceneTextContent(
+  screenplay: ScreenplayData,
+  sceneIndex: number,
+  itemIndex: number,
+  nextValue: string,
+): ScreenplayData {
+  const nextScreenplay = cloneScreenplay(screenplay)
+  const scene = nextScreenplay.scenes[sceneIndex]
+  if (!scene?.content?.[itemIndex]) return nextScreenplay
+
+  const trimmedValue = nextValue.trim()
+  const currentItem = scene.content[itemIndex]
+
+  if (!trimmedValue) {
+    scene.content.splice(itemIndex, 1)
+    return nextScreenplay
+  }
+
+  if (currentItem.type === 'dialogue') {
+    currentItem.lines = nextValue
+  } else {
+    currentItem.text = nextValue
+  }
+
+  return nextScreenplay
 }
 
 function parseScreenplay(value: string | null | undefined): ScreenplayData | null {
@@ -73,10 +111,18 @@ function EditableText({
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [value, setValue] = useState(text)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     setValue(text)
   }, [text])
+
+  useEffect(() => {
+    if (!isEditing || !textareaRef.current) return
+    const textarea = textareaRef.current
+    textarea.style.height = '0px'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [isEditing, value])
 
   const handleBlur = () => {
     setIsEditing(false)
@@ -88,11 +134,12 @@ function EditableText({
   if (isEditing) {
     return (
       <textarea
+        ref={textareaRef}
         autoFocus
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
-        className={`w-full bg-[var(--glass-bg-surface)] border border-[var(--glass-stroke-focus)] rounded p-1 outline-none focus:ring-2 focus:ring-[var(--glass-focus-ring-strong)] ${className}`}
+        className={`w-full max-w-full overflow-hidden bg-[var(--glass-bg-surface)] border border-[var(--glass-stroke-focus)] rounded p-1 outline-none focus:ring-2 focus:ring-[var(--glass-focus-ring-strong)] ${className}`}
         style={{ resize: 'none', minHeight: '1.5em' }}
       />
     )
@@ -104,7 +151,7 @@ function EditableText({
         e.stopPropagation()
         setIsEditing(true)
       }}
-      className={`cursor-text hover:bg-[var(--glass-tone-info-bg)] rounded px-1 -mx-1 transition-colors border border-transparent hover:border-[var(--glass-stroke-focus)] ${className}`}
+      className={`cursor-text whitespace-pre-wrap break-words hover:bg-[var(--glass-tone-info-bg)] rounded px-1 -mx-1 transition-colors border border-transparent hover:border-[var(--glass-stroke-focus)] ${className}`}
       title={tScript('screenplay.clickToEdit')}
     >
       {text}
@@ -196,8 +243,13 @@ export default function ScriptViewScriptPanel({
 
                   {screenplay && screenplay.scenes ? (
                     <div className="space-y-3">
-                      {screenplay.scenes.map((scene, sceneIdx: number) => (
-                        <div key={sceneIdx}>
+                      {screenplay.scenes.map((scene, sceneIdx: number) => {
+                        const visibleSceneContent = (scene.content ?? [])
+                          .map((item, itemIndex) => ({ item, itemIndex }))
+                          .filter(({ item }) => isRenderableSceneContentItem(item))
+
+                        return (
+                          <div key={sceneIdx}>
                           {/* 场景头信息 */}
                           <div className="flex items-center gap-1.5 text-xs mb-2 flex-wrap">
                             <span className="font-bold text-[var(--glass-tone-info-fg)] bg-[var(--glass-tone-info-bg)] px-2 py-0.5 rounded">
@@ -208,8 +260,13 @@ export default function ScriptViewScriptPanel({
                               <EditableText
                                 text={scene.heading?.location || ''}
                                 onSave={(newVal) => {
-                                  const newScreenplay = JSON.parse(JSON.stringify(screenplay))
-                                  newScreenplay.scenes[sceneIdx].heading.location = newVal
+                                  const newScreenplay = cloneScreenplay(screenplay)
+                                  const targetScene = newScreenplay.scenes[sceneIdx]
+                                  if (!targetScene) return
+                                  targetScene.heading = {
+                                    ...targetScene.heading,
+                                    location: newVal,
+                                  }
                                   void handleScriptSave(clip.id, JSON.stringify(newScreenplay), true)
                                 }}
                                 className="inline"
@@ -219,8 +276,13 @@ export default function ScriptViewScriptPanel({
                               <EditableText
                                 text={scene.heading?.time || ''}
                                 onSave={(newVal) => {
-                                  const newScreenplay = JSON.parse(JSON.stringify(screenplay))
-                                  newScreenplay.scenes[sceneIdx].heading.time = newVal
+                                  const newScreenplay = cloneScreenplay(screenplay)
+                                  const targetScene = newScreenplay.scenes[sceneIdx]
+                                  if (!targetScene) return
+                                  targetScene.heading = {
+                                    ...targetScene.heading,
+                                    time: newVal,
+                                  }
                                   void handleScriptSave(clip.id, JSON.stringify(newScreenplay), true)
                                 }}
                                 className="inline"
@@ -235,8 +297,13 @@ export default function ScriptViewScriptPanel({
                               <EditableText
                                 text={scene.description}
                                 onSave={(newVal) => {
-                                  const newScreenplay = JSON.parse(JSON.stringify(screenplay))
-                                  newScreenplay.scenes[sceneIdx].description = newVal
+                                  const newScreenplay = cloneScreenplay(screenplay)
+                                  const trimmedValue = newVal.trim()
+                                  if (trimmedValue) {
+                                    newScreenplay.scenes[sceneIdx].description = newVal
+                                  } else {
+                                    delete newScreenplay.scenes[sceneIdx].description
+                                  }
                                   void handleScriptSave(clip.id, JSON.stringify(newScreenplay), true)
                                 }}
                                 tScript={tScript}
@@ -246,18 +313,18 @@ export default function ScriptViewScriptPanel({
 
                           {/* 内容流 - 高密度胶囊文本流 */}
                           <div className="flex flex-col gap-2">
-                            {scene.content?.map((item, itemIdx: number) => {
+                            {visibleSceneContent.map(({ item, itemIndex }) => {
                               if (item.type === 'action') {
                                 return (
-                                  <div key={itemIdx} className="text-sm text-[var(--glass-text-secondary)] bg-[var(--glass-bg-muted)]/60 border border-[var(--glass-stroke-base)] px-2.5 py-1 rounded-lg flex items-start gap-2 w-fit max-w-full leading-[1.5]">
+                                  <div key={itemIndex} className="text-sm text-[var(--glass-text-secondary)] bg-[var(--glass-bg-muted)]/60 border border-[var(--glass-stroke-base)] px-2.5 py-1 rounded-lg flex items-start gap-2 w-full max-w-full leading-[1.5]">
                                     <AppIcon name="clapperboard" className="w-3.5 h-3.5 text-[var(--glass-text-tertiary)] shrink-0 mt-[2px]" />
                                     <EditableText
                                       text={item.text}
                                       onSave={(newVal) => {
-                                        const newScreenplay = JSON.parse(JSON.stringify(screenplay))
-                                        newScreenplay.scenes[sceneIdx].content[itemIdx].text = newVal
+                                        const newScreenplay = updateSceneTextContent(screenplay, sceneIdx, itemIndex, newVal)
                                         void handleScriptSave(clip.id, JSON.stringify(newScreenplay), true)
                                       }}
+                                      className="flex-1 min-w-0"
                                       tScript={tScript}
                                     />
                                   </div>
@@ -265,7 +332,7 @@ export default function ScriptViewScriptPanel({
                               }
                               if (item.type === 'dialogue') {
                                 return (
-                                  <div key={itemIdx} className="flex flex-wrap items-baseline gap-2">
+                                  <div key={itemIndex} className="flex flex-wrap items-baseline gap-2">
                                     <span className="inline-flex items-center text-[13px] font-bold text-[var(--glass-tone-info-fg)] bg-[var(--glass-tone-info-bg)] border border-[var(--glass-stroke-focus)]/40 px-2.5 py-0.5 rounded-full shrink-0">
                                       {item.character}
                                     </span>
@@ -273,8 +340,7 @@ export default function ScriptViewScriptPanel({
                                       <EditableText
                                         text={item.lines}
                                         onSave={(newVal) => {
-                                          const newScreenplay = JSON.parse(JSON.stringify(screenplay))
-                                          newScreenplay.scenes[sceneIdx].content[itemIdx].lines = newVal
+                                          const newScreenplay = updateSceneTextContent(screenplay, sceneIdx, itemIndex, newVal)
                                           void handleScriptSave(clip.id, JSON.stringify(newScreenplay), true)
                                         }}
                                         tScript={tScript}
@@ -285,7 +351,7 @@ export default function ScriptViewScriptPanel({
                               }
                               if (item.type === 'voiceover') {
                                 return (
-                                  <div key={itemIdx} className="flex flex-wrap items-baseline gap-2">
+                                  <div key={itemIndex} className="flex flex-wrap items-baseline gap-2">
                                     <span className="inline-flex items-center text-[13px] font-bold text-[var(--glass-tone-info-fg)]/80 bg-[var(--glass-tone-info-bg)]/50 border border-[var(--glass-stroke-focus)]/20 px-2.5 py-0.5 rounded-full shrink-0 italic">
                                       {tScript('screenplay.narration')}
                                     </span>
@@ -296,8 +362,9 @@ export default function ScriptViewScriptPanel({
                               return null
                             })}
                           </div>
-                        </div>
-                      ))}
+                          </div>
+                        )
+                      })}
                     </div>
                   ) : (
                     <p className="text-[var(--glass-text-secondary)] text-sm leading-relaxed">{clip.summary || clip.content}</p>

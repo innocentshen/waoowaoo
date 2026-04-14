@@ -31,6 +31,10 @@ describe('Storyboard panel action affordances', () => {
     const markup = renderToStaticMarkup(
       React.createElement(PanelActionButtons, {
         onInsertPanel: () => undefined,
+        onMoveUp: () => undefined,
+        onMoveDown: () => undefined,
+        canMoveUp: true,
+        canMoveDown: true,
         onVariant: () => undefined,
         disabled: false,
         hasImage: true,
@@ -39,6 +43,8 @@ describe('Storyboard panel action affordances', () => {
 
     expect(markup).toContain('rounded-2xl border border-white/10 bg-[rgba(15,23,42,0.72)]')
     expect(markup).toContain('h-8 w-8')
+    expect(markup).toContain('chevronUp')
+    expect(markup).toContain('chevronDown')
     expect(markup).toContain('plus')
     expect(markup).toContain('videoAlt')
   })

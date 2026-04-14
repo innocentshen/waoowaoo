@@ -22,6 +22,18 @@ export type WaitTaskOptions = {
   onTaskUpdate?: (task: TaskSnapshot) => void
 }
 
+function isRetriableTaskFetchError(error: unknown) {
+  if (!(error instanceof Error)) return false
+  const message = error.message.trim().toLowerCase()
+  return (
+    message === 'connection error.' ||
+    message === 'connection error' ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('network error')
+  )
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -55,13 +67,25 @@ export async function waitForTaskResult(taskId: string, options: WaitTaskOptions
   const timeoutMs = options.timeoutMs ?? 0
   const onTaskUpdate = options.onTaskUpdate
   const startedAt = Date.now()
+  let transientFetchErrorCount = 0
 
   while (true) {
     if (timeoutMs > 0 && Date.now() - startedAt > timeoutMs) {
       throw new Error(`Task timeout: ${taskId}`)
     }
 
-    const task = await getTaskSnapshot(taskId)
+    let task: TaskSnapshot
+    try {
+      task = await getTaskSnapshot(taskId)
+      transientFetchErrorCount = 0
+    } catch (error) {
+      if (isRetriableTaskFetchError(error) && transientFetchErrorCount < 3) {
+        transientFetchErrorCount += 1
+        await sleep(intervalMs)
+        continue
+      }
+      throw error
+    }
 
     onTaskUpdate?.(task)
 

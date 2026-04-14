@@ -51,7 +51,12 @@ if errorlevel 1 (
 
 docker info >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Docker Desktop is not running. Start Docker and try again.
+  echo [ERROR] Docker Desktop is not running, or its Linux engine failed to start.
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\repair-docker-desktop.ps1"
+  echo.
+  echo [HINT] If the diagnosis reports a stuck Docker Desktop VHDX,
+  echo [HINT] open PowerShell as Administrator and run:
+  echo [HINT]   powershell -ExecutionPolicy Bypass -File "%~dp0scripts\repair-docker-desktop.ps1" -Repair
   goto :fail
 )
 

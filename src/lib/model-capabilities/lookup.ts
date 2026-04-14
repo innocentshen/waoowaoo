@@ -283,6 +283,7 @@ export function resolveGenerationOptionsForModel(input: {
   capabilityDefaults?: CapabilitySelections
   capabilityOverrides?: CapabilitySelections
   runtimeSelections?: Record<string, CapabilityValue>
+  preferredSelection?: Record<string, CapabilityValue>
   requireAllFields?: boolean
 }): { options: Record<string, CapabilityValue>; issues: CapabilitySelectionValidationIssue[] } {
   const defaults = pickSelectionForModel(input.capabilityDefaults, input.modelKey)
@@ -344,6 +345,7 @@ export function resolveGenerationOptionsForModel(input: {
     }
 
     if (hasAspectRatioOptions && !hasAspectRatioInSelection) {
+      const preferredAspectRatio = input.preferredSelection?.aspectRatio
       const defaultAspectRatio = resolvePreferredCapabilityDefault(
         'aspectRatio',
         optionFields.aspectRatio as CapabilityValue[],
@@ -356,12 +358,17 @@ export function resolveGenerationOptionsForModel(input: {
 
       if (
         missingAspectRatioIssue
-        && defaultAspectRatio !== undefined
-        && optionFields.aspectRatio.includes(defaultAspectRatio)
+        && (
+          (preferredAspectRatio !== undefined && optionFields.aspectRatio.includes(preferredAspectRatio))
+          || (defaultAspectRatio !== undefined && optionFields.aspectRatio.includes(defaultAspectRatio))
+        )
       ) {
         normalizedSelection = {
           ...normalizedSelection,
-          aspectRatio: defaultAspectRatio,
+          aspectRatio:
+            preferredAspectRatio !== undefined && optionFields.aspectRatio.includes(preferredAspectRatio)
+              ? preferredAspectRatio
+              : defaultAspectRatio!,
         }
       }
     }
@@ -392,6 +399,7 @@ export function resolveGenerationOptionsForModel(input: {
     const hasAspectRatioInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'aspectRatio')
 
     if (hasAspectRatioOptions && !hasAspectRatioInSelection) {
+      const preferredAspectRatio = input.preferredSelection?.aspectRatio
       const defaultAspectRatio = resolvePreferredCapabilityDefault(
         'aspectRatio',
         optionFields.aspectRatio as CapabilityValue[],
@@ -404,12 +412,17 @@ export function resolveGenerationOptionsForModel(input: {
 
       if (
         missingAspectRatioIssue
-        && defaultAspectRatio !== undefined
-        && optionFields.aspectRatio.includes(defaultAspectRatio)
+        && (
+          (preferredAspectRatio !== undefined && optionFields.aspectRatio.includes(preferredAspectRatio))
+          || (defaultAspectRatio !== undefined && optionFields.aspectRatio.includes(defaultAspectRatio))
+        )
       ) {
         normalizedSelection = {
           ...normalizedSelection,
-          aspectRatio: defaultAspectRatio,
+          aspectRatio:
+            preferredAspectRatio !== undefined && optionFields.aspectRatio.includes(preferredAspectRatio)
+              ? preferredAspectRatio
+              : defaultAspectRatio!,
         }
       }
     }

@@ -19,7 +19,7 @@ export default function InsertPanelButton({ onClick, disabled }: InsertPanelButt
             onClick={onClick}
             disabled={disabled}
             className={`
-                group relative h-7 w-7 rounded-full
+                group relative h-7 w-7 rounded-[8px]
                 glass-btn-base border border-[var(--glass-stroke-base)]
                 bg-[var(--glass-bg-surface)] text-[var(--glass-text-secondary)]
                 shadow-[var(--glass-shadow-sm)] transition-all duration-200 ease-out

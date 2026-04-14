@@ -14,6 +14,7 @@ import {
 import {
   useCreateProjectPanel,
   useDeleteProjectPanel,
+  useMoveProjectPanel,
   useUpdateProjectPanel,
 } from '@/lib/query/hooks'
 import {
@@ -39,6 +40,9 @@ export function usePanelCrudActions({
   const t = useTranslations('storyboard')
   const [savingPanels, setSavingPanels] = useState<Set<string>>(new Set())
   const [deletingPanelIds, setDeletingPanelIds] = useState<Set<string>>(new Set())
+  const [movingPanelId, setMovingPanelId] = useState<string | null>(null)
+  const [creatingPanelAfterId, setCreatingPanelAfterId] = useState<string | null>(null)
+  const [creatingPanelStoryboardId, setCreatingPanelStoryboardId] = useState<string | null>(null)
   const [saveStateByPanel, setSaveStateByPanel] = useState<Record<string, PanelSaveState>>({})
   const saveTimeouts = useRef<Record<string, NodeJS.Timeout>>({})
   const panelSaveCoordinatorRef = useRef<PanelSaveCoordinator | null>(null)
@@ -46,6 +50,7 @@ export function usePanelCrudActions({
   const savePanelMutation = useUpdateProjectPanel(projectId)
   const createPanelMutation = useCreateProjectPanel(projectId)
   const deletePanelMutation = useDeleteProjectPanel(projectId)
+  const movePanelMutation = useMoveProjectPanel(projectId)
 
   const setPanelSaveState = useCallback((panelId: string, nextState: PanelSaveState) => {
     setSaveStateByPanel((previous) => {
@@ -197,10 +202,16 @@ export function usePanelCrudActions({
     return new Set(panelIds)
   }, [saveStateByPanel])
 
-  const addPanel = useCallback(async (storyboardId: string) => {
+  const addPanel = useCallback(async (storyboardId: string, insertAfterPanelId?: string) => {
+    if (insertAfterPanelId) {
+      setCreatingPanelAfterId(insertAfterPanelId)
+    } else {
+      setCreatingPanelStoryboardId(storyboardId)
+    }
     try {
       await createPanelMutation.mutateAsync({
         storyboardId,
+        ...(insertAfterPanelId ? { insertAfterPanelId } : {}),
         shotType: t('variant.defaultShotType'),
         cameraMove: t('variant.defaultCameraMove'),
         description: t('panel.newPanelDescription'),
@@ -215,8 +226,30 @@ export function usePanelCrudActions({
           error: getErrorMessage(error, t('common.unknownError')),
         }),
       )
+    } finally {
+      setCreatingPanelAfterId(null)
+      setCreatingPanelStoryboardId(null)
     }
   }, [createPanelMutation, onRefresh, t])
+
+  const movePanel = useCallback(async (panelId: string, direction: 'up' | 'down') => {
+    if (movingPanelId) return
+    setMovingPanelId(panelId)
+
+    try {
+      await movePanelMutation.mutateAsync({ panelId, direction })
+      await onRefresh()
+    } catch (error: unknown) {
+      _ulogError('绉诲姩鍒嗛暅澶辫触:', error)
+      alert(
+        t('messages.movePanelFailed', {
+          error: getErrorMessage(error, t('common.unknownError')),
+        }),
+      )
+    } finally {
+      setMovingPanelId(null)
+    }
+  }, [movePanelMutation, movingPanelId, onRefresh, t])
 
   const deletePanel = useCallback(async (
     panelId: string,
@@ -330,6 +363,10 @@ export function usePanelCrudActions({
   return {
     savingPanels,
     deletingPanelIds,
+    movingPanelId,
+    creatingPanelAfterId,
+    creatingPanelStoryboardId,
+    isCreatingPanel: createPanelMutation.isPending,
     saveStateByPanel,
     hasUnsavedByPanel,
     savePanel,
@@ -337,6 +374,7 @@ export function usePanelCrudActions({
     debouncedSave,
     retrySave,
     addPanel,
+    movePanel,
     deletePanel,
     addCharacterToPanel,
     removeCharacterFromPanel,

@@ -3,11 +3,14 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import type { NovelPromotionStoryboard } from '@/types/project'
-import type { StoryboardPanel } from './hooks/useStoryboardState'
 import GlassModalShell from '@/components/ui/primitives/GlassModalShell'
 import { GlassButton } from '@/components/ui/primitives'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
+
+export interface StoryboardSourceOptionGroup extends NovelPromotionStoryboard {
+  sourceClipTitle: string
+}
 
 interface SourcePanelOption {
   id: string
@@ -21,10 +24,9 @@ interface SourcePanelOption {
 interface SelectStoryboardPanelImageModalProps {
   open: boolean
   targetPanelId: string | null
-  storyboards: NovelPromotionStoryboard[]
+  storyboards: StoryboardSourceOptionGroup[]
   videoRatio: string
-  getTextPanels: (storyboard: NovelPromotionStoryboard) => StoryboardPanel[]
-  getClipTitle: (storyboard: NovelPromotionStoryboard) => string
+  isLoading?: boolean
   onClose: () => void
   onSelect: (sourcePanelId: string) => Promise<void>
 }
@@ -34,8 +36,7 @@ export default function SelectStoryboardPanelImageModal({
   targetPanelId,
   storyboards,
   videoRatio,
-  getTextPanels,
-  getClipTitle,
+  isLoading = false,
   onClose,
   onSelect,
 }: SelectStoryboardPanelImageModalProps) {
@@ -48,21 +49,21 @@ export default function SelectStoryboardPanelImageModal({
 
     const nextOptions: SourcePanelOption[] = []
     for (const storyboard of storyboards) {
-      const clipTitle = getClipTitle(storyboard)
-      for (const panel of getTextPanels(storyboard)) {
+      const panels = Array.isArray(storyboard.panels) ? storyboard.panels : []
+      for (const panel of panels) {
         if (panel.id === targetPanelId || !panel.imageUrl) continue
         nextOptions.push({
           id: panel.id,
           imageUrl: panel.imageUrl,
-          panelNumber: panel.panel_number ?? panel.panelIndex + 1,
-          shotType: panel.shot_type || t('panel.noShotType'),
+          panelNumber: panel.panelNumber ?? panel.panelIndex + 1,
+          shotType: panel.shotType || t('panel.noShotType'),
           description: panel.description || '',
-          clipTitle,
+          clipTitle: storyboard.sourceClipTitle,
         })
       }
     }
     return nextOptions
-  }, [getClipTitle, getTextPanels, storyboards, t, targetPanelId])
+  }, [storyboards, t, targetPanelId])
 
   const handleSelect = async (sourcePanelId: string) => {
     setPendingSourcePanelId(sourcePanelId)
@@ -88,7 +89,12 @@ export default function SelectStoryboardPanelImageModal({
         </div>
       )}
     >
-      {options.length === 0 ? (
+      {options.length === 0 && isLoading ? (
+        <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface-strong)] p-6 text-center">
+          <AppIcon name="imagePreview" className="h-8 w-8 text-[var(--glass-text-tertiary)]" />
+          <p className="text-sm text-[var(--glass-text-secondary)]">{t('common.loading')}</p>
+        </div>
+      ) : options.length === 0 ? (
         <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface-strong)] p-6 text-center">
           <AppIcon name="imagePreview" className="h-8 w-8 text-[var(--glass-text-tertiary)]" />
           <p className="text-sm text-[var(--glass-text-secondary)]">{t('image.noOtherShots')}</p>

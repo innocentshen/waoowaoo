@@ -351,14 +351,28 @@ export function useVideoStageRuntime({
     () => JSON.stringify(selectedBatchModelOverrides),
     [selectedBatchModelOverrides],
   )
+  const preferredBatchSelection = useMemo<VideoGenerationOptions>(() => {
+    const nextSelection: VideoGenerationOptions = {}
+    if (videoRatio) {
+      nextSelection.aspectRatio = videoRatio
+    }
+    return nextSelection
+  }, [videoRatio])
 
   useEffect(() => {
     setBatchGenerationOptions(normalizeVideoGenerationSelections({
       definitions: batchCapabilityDefinitions,
       pricingTiers: batchPricingTiers,
       selection: selectedBatchModelOverrides,
+      preferredSelection: preferredBatchSelection,
     }))
-  }, [batchCapabilityDefinitions, batchPricingTiers, selectedBatchModelOverrides, selectedBatchModelOverridesSignature])
+  }, [
+    batchCapabilityDefinitions,
+    batchPricingTiers,
+    preferredBatchSelection,
+    selectedBatchModelOverrides,
+    selectedBatchModelOverridesSignature,
+  ])
 
   useEffect(() => {
     setBatchGenerationOptions((previous) => {
@@ -366,17 +380,19 @@ export function useVideoStageRuntime({
         definitions: batchCapabilityDefinitions,
         pricingTiers: batchPricingTiers,
         selection: previous,
+        preferredSelection: preferredBatchSelection,
       })
     })
-  }, [batchCapabilityDefinitions, batchPricingTiers])
+  }, [batchCapabilityDefinitions, batchPricingTiers, preferredBatchSelection])
 
   const batchEffectiveCapabilityFields = useMemo(
     () => resolveEffectiveVideoCapabilityFields({
       definitions: batchCapabilityDefinitions,
       pricingTiers: batchPricingTiers,
       selection: batchGenerationOptions,
+      preferredSelection: preferredBatchSelection,
     }),
-    [batchCapabilityDefinitions, batchGenerationOptions, batchPricingTiers],
+    [batchCapabilityDefinitions, batchGenerationOptions, batchPricingTiers, preferredBatchSelection],
   )
 
   const batchEffectiveFieldMap = useMemo(
@@ -436,6 +452,7 @@ export function useVideoStageRuntime({
         [field]: parsedValue,
       },
       pinnedFields: [field],
+      preferredSelection: preferredBatchSelection,
     })
     setBatchGenerationOptions(nextSelection)
     persistVideoGenerationSelection(batchSelectedModel, nextSelection)
@@ -446,6 +463,7 @@ export function useVideoStageRuntime({
     batchPricingTiers,
     batchSelectedModel,
     persistVideoGenerationSelection,
+    preferredBatchSelection,
   ])
 
   const handleLipSync = useCallback(async (
@@ -569,6 +587,7 @@ export function useVideoStageRuntime({
     allPanels,
     linkedPanels,
     videoModelOptions: allVideoModelOptions,
+    videoRatio,
     onGenerateVideo: handleGenerateVideoWithImmediateLock,
     t: (key) => t(key as never),
   })

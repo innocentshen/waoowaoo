@@ -13,6 +13,7 @@ interface StoryboardGroupActionsProps {
   isSubmittingStoryboardTextTask: boolean
   currentRunningCount: number
   pendingCount: number
+  isCreatingPanel?: boolean
   onRegenerateText: () => void
   onGenerateAllIndividually: () => void
   onAddPanel: () => void
@@ -25,6 +26,7 @@ export default function StoryboardGroupActions({
   isSubmittingStoryboardTextTask,
   currentRunningCount,
   pendingCount,
+  isCreatingPanel = false,
   onRegenerateText,
   onGenerateAllIndividually,
   onAddPanel,
@@ -94,6 +96,7 @@ export default function StoryboardGroupActions({
         variant="secondary"
         size="sm"
         onClick={onAddPanel}
+        disabled={isCreatingPanel}
       >
         <AppIcon name="plusMd" className="h-3.5 w-3.5" />
         <span>{t('group.addPanel')}</span>

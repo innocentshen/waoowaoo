@@ -22,6 +22,10 @@ export interface StoryboardGroupProps {
   failedError: string | null
   savingPanels: Set<string>
   deletingPanelIds: Set<string>
+  movingPanelId: string | null
+  creatingPanelAfterId: string | null
+  creatingPanelStoryboardId: string | null
+  isCreatingPanel: boolean
   saveStateByPanel: Record<string, PanelSaveState>
   hasUnsavedByPanel: Set<string>
   uploadingPanels: Set<string>
@@ -33,6 +37,8 @@ export interface StoryboardGroupProps {
   onMoveDown: () => void
   onRegenerateText: () => void
   onAddPanel: () => void
+  onInsertBetween: (panelId: string) => void
+  onMovePanel: (panelId: string, direction: 'up' | 'down') => Promise<void>
   onDeleteStoryboard: () => void
   onGenerateAllIndividually: () => void
   onPreviewImage: (url: string) => void

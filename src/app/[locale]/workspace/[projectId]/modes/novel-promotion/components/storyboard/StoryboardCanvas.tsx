@@ -22,6 +22,10 @@ interface StoryboardCanvasProps {
   submittingStoryboardTextIds: Set<string>
   savingPanels: Set<string>
   deletingPanelIds: Set<string>
+  movingPanelId: string | null
+  creatingPanelAfterId: string | null
+  creatingPanelStoryboardId: string | null
+  isCreatingPanel: boolean
   saveStateByPanel: Record<string, PanelSaveState>
   hasUnsavedByPanel: Set<string>
   uploadingPanels: Set<string>
@@ -40,7 +44,8 @@ interface StoryboardCanvasProps {
   onToggleExpandedClip: (storyboardId: string) => void
   onMoveStoryboardGroup: (clipId: string, direction: 'up' | 'down') => Promise<void>
   onRegenerateStoryboardText: (storyboardId: string) => Promise<void>
-  onAddPanel: (storyboardId: string) => Promise<void>
+  onAddPanel: (storyboardId: string, insertAfterPanelId?: string) => Promise<void>
+  onMovePanel: (panelId: string, direction: 'up' | 'down') => Promise<void>
   onDeleteStoryboard: (storyboardId: string, panelCount: number) => Promise<void>
   onGenerateAllIndividually: (storyboardId: string) => Promise<void>
   onPreviewImage: (url: string) => void
@@ -90,6 +95,10 @@ function areStoryboardCanvasPropsEqual(previous: StoryboardCanvasProps, next: St
     previous.submittingStoryboardTextIds === next.submittingStoryboardTextIds &&
     previous.savingPanels === next.savingPanels &&
     previous.deletingPanelIds === next.deletingPanelIds &&
+    previous.movingPanelId === next.movingPanelId &&
+    previous.creatingPanelAfterId === next.creatingPanelAfterId &&
+    previous.creatingPanelStoryboardId === next.creatingPanelStoryboardId &&
+    previous.isCreatingPanel === next.isCreatingPanel &&
     previous.saveStateByPanel === next.saveStateByPanel &&
     previous.hasUnsavedByPanel === next.hasUnsavedByPanel &&
     previous.uploadingPanels === next.uploadingPanels &&
@@ -120,6 +129,10 @@ function StoryboardCanvas({
   submittingStoryboardTextIds,
   savingPanels,
   deletingPanelIds,
+  movingPanelId,
+  creatingPanelAfterId,
+  creatingPanelStoryboardId,
+  isCreatingPanel,
   saveStateByPanel,
   hasUnsavedByPanel,
   uploadingPanels,
@@ -139,6 +152,7 @@ function StoryboardCanvas({
   onMoveStoryboardGroup,
   onRegenerateStoryboardText,
   onAddPanel,
+  onMovePanel,
   onDeleteStoryboard,
   onGenerateAllIndividually,
   onPreviewImage,
@@ -206,6 +220,10 @@ function StoryboardCanvas({
               failedError={failedError}
               savingPanels={savingPanels}
               deletingPanelIds={deletingPanelIds}
+              movingPanelId={movingPanelId}
+              creatingPanelAfterId={creatingPanelAfterId}
+              creatingPanelStoryboardId={creatingPanelStoryboardId}
+              isCreatingPanel={isCreatingPanel}
               saveStateByPanel={saveStateByPanel}
               hasUnsavedByPanel={hasUnsavedByPanel}
               uploadingPanels={uploadingPanels}
@@ -216,6 +234,8 @@ function StoryboardCanvas({
               onMoveDown={() => onMoveStoryboardGroup(storyboard.clipId, 'down')}
               onRegenerateText={() => onRegenerateStoryboardText(storyboard.id)}
               onAddPanel={() => onAddPanel(storyboard.id)}
+              onInsertBetween={(panelId) => onAddPanel(storyboard.id, panelId)}
+              onMovePanel={onMovePanel}
               onDeleteStoryboard={() => onDeleteStoryboard(storyboard.id, textPanels.length)}
               onGenerateAllIndividually={() => onGenerateAllIndividually(storyboard.id)}
               onPreviewImage={onPreviewImage}

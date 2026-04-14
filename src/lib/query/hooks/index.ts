@@ -126,6 +126,7 @@ export {
     useUpdateProjectPanel,
     useCreateProjectPanel,
     useDeleteProjectPanel,
+    useMoveProjectPanel,
     useDeleteProjectStoryboardGroup,
     useRegenerateProjectStoryboardText,
     useCreateProjectStoryboardGroup,
@@ -175,6 +176,7 @@ export type {
 // 分镜
 export {
     useStoryboards,
+    usePreviousEpisodeStoryboardSources,
     useRegeneratePanelImage,
     useModifyPanelImage,
     useGenerateVideo,
@@ -184,6 +186,7 @@ export {
     type StoryboardPanel,
     type StoryboardGroup,
     type StoryboardData,
+    type StoryboardSourceStoryboard,
     type PanelCandidate,
 } from './useStoryboards'
 

@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
-import { resolveTaskResponse } from '@/lib/task/client'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import { apiFetch } from '@/lib/api-fetch'
 import {
@@ -10,7 +9,6 @@ import {
 import {
     invalidateQueryTemplates,
     requestJsonWithError,
-    requestTaskResponseWithError,
 } from './mutation-shared'
 
 export function useRegenerateProjectPanelImage(projectId: string) {
@@ -254,7 +252,7 @@ export function useDeleteProjectStoryboardGroup(projectId: string) {
 export function useRegenerateProjectStoryboardText(projectId: string) {
     return useMutation({
         mutationFn: async ({ storyboardId }: { storyboardId: string }) => {
-            const response = await requestTaskResponseWithError(
+            return await requestJsonWithError<{ async: true; taskId: string }>(
                 `/api/novel-promotion/${projectId}/regenerate-storyboard-text`,
                 {
                     method: 'POST',
@@ -263,7 +261,6 @@ export function useRegenerateProjectStoryboardText(projectId: string) {
                 },
                 'regenerate storyboard text failed',
             )
-            return resolveTaskResponse(response)
         },
     })
 }
@@ -385,6 +382,26 @@ export function useClearProjectStoryboardError(projectId: string) {
                 },
                 '清除分镜错误失败',
             ),
+        onSettled: () => {
+            invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+        },
+    })
+}
+
+export function useMoveProjectPanel(projectId: string) {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ panelId, direction }: { panelId: string; direction: 'up' | 'down' }) => {
+            return await requestJsonWithError(`/api/novel-promotion/${projectId}/panel`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'move',
+                    panelId,
+                    direction,
+                }),
+            }, '绉诲姩澶辫触')
+        },
         onSettled: () => {
             invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
         },

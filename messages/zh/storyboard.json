@@ -251,6 +251,7 @@
         "modifyFailed": "修改失败: {error}",
         "selectCandidateFailed": "选择失败: {error}",
         "insertPanelFailed": "插入分镜失败: {error}",
+        "movePanelFailed": "移动分镜失败: {error}",
         "addPanelFailed": "添加分镜失败: {error}",
         "deletePanelFailed": "删除失败: {error}",
         "deleteGroupFailed": "删除分镜组失败: {error}",
@@ -386,6 +387,8 @@
     "panelActions": {
         "insertPanel": "插入分镜",
         "panelVariant": "镜头变体",
+        "moveUp": "前移一位",
+        "moveDown": "后移一位",
         "insertHere": "在此处插入分镜",
         "generateVariant": "基于此镜头生成变体",
         "needImage": "需要先生成图片",

@@ -5,7 +5,7 @@ import { queryKeys } from '../keys'
 import { checkApiResponse } from '@/lib/error-handler'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import { clearTaskTargetOverlay, upsertTaskTargetOverlay } from '../task-target-overlay'
-import type { MediaRef } from '@/types/project'
+import type { MediaRef, NovelPromotionClip, NovelPromotionStoryboard } from '@/types/project'
 import { apiFetch, getPageLocale } from '@/lib/api-fetch'
 
 // ============ 类型定义 ============
@@ -49,6 +49,21 @@ export interface StoryboardData {
     groups: StoryboardGroup[]
 }
 
+export interface StoryboardSourceEpisodeInfo {
+    id: string
+    episodeNumber: number
+    name: string
+}
+
+export interface StoryboardSourceStoryboard extends NovelPromotionStoryboard {
+    clip?: Pick<NovelPromotionClip, 'id' | 'start' | 'end' | 'startText' | 'endText' | 'summary'> | null
+    episode?: StoryboardSourceEpisodeInfo | null
+}
+
+interface StoryboardSourceData {
+    storyboards: StoryboardSourceStoryboard[]
+}
+
 type VideoGenerationOptionValue = string | number | boolean
 type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
 type VideoReferenceSelection = {
@@ -89,6 +104,29 @@ export function useStoryboards(episodeId: string | null) {
             return data as StoryboardData
         },
         enabled: !!episodeId,
+    })
+}
+
+export function usePreviousEpisodeStoryboardSources(
+    projectId: string | null,
+    episodeId: string | null,
+    enabled = true,
+) {
+    return useQuery({
+        queryKey: queryKeys.storyboards.sources(projectId || '', episodeId || ''),
+        queryFn: async () => {
+            if (!projectId || !episodeId) throw new Error('Project ID and Episode ID are required')
+            const res = await apiFetch(
+                `/api/novel-promotion/${projectId}/storyboards?beforeEpisodeId=${encodeURIComponent(episodeId)}`,
+            )
+            if (!res.ok) {
+                const error = await res.json().catch(() => ({}))
+                throw new Error(resolveTaskErrorMessage(error, 'Failed to load storyboard sources'))
+            }
+            return await res.json() as StoryboardSourceData
+        },
+        enabled: enabled && !!projectId && !!episodeId,
+        staleTime: 10000,
     })
 }
 

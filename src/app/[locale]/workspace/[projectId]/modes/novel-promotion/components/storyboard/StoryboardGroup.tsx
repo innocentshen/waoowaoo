@@ -33,6 +33,10 @@ function areStoryboardGroupPropsEqual(previous: StoryboardGroupProps, next: Stor
     previous.failedError !== next.failedError ||
     previous.savingPanels !== next.savingPanels ||
     previous.deletingPanelIds !== next.deletingPanelIds ||
+    previous.movingPanelId !== next.movingPanelId ||
+    previous.creatingPanelAfterId !== next.creatingPanelAfterId ||
+    previous.creatingPanelStoryboardId !== next.creatingPanelStoryboardId ||
+    previous.isCreatingPanel !== next.isCreatingPanel ||
     previous.saveStateByPanel !== next.saveStateByPanel ||
     previous.hasUnsavedByPanel !== next.hasUnsavedByPanel ||
     previous.uploadingPanels !== next.uploadingPanels ||
@@ -77,6 +81,10 @@ function StoryboardGroup({
   failedError,
   savingPanels,
   deletingPanelIds,
+  movingPanelId,
+  creatingPanelAfterId,
+  creatingPanelStoryboardId,
+  isCreatingPanel,
   saveStateByPanel,
   hasUnsavedByPanel,
   uploadingPanels,
@@ -87,6 +95,8 @@ function StoryboardGroup({
   onMoveDown,
   onRegenerateText,
   onAddPanel,
+  onInsertBetween,
+  onMovePanel,
   onDeleteStoryboard,
   onGenerateAllIndividually,
   onPreviewImage,
@@ -225,6 +235,7 @@ function StoryboardGroup({
           onGenerateAllIndividually={onGenerateAllIndividually}
           onAddPanel={onAddPanel}
           onDeleteStoryboard={onDeleteStoryboard}
+          isCreatingPanel={isCreatingPanel}
         />
       </div>
 
@@ -286,10 +297,24 @@ function StoryboardGroup({
         onCancelPanelCandidate={onCancelPanelCandidate}
         onClearPanelTaskError={clearPanelTaskError}
         onPreviewImage={onPreviewImage}
+        onInsertBetween={onInsertBetween}
         onInsertAfter={handleOpenInsertModal}
+        onMoveUp={(panelId) => onMovePanel(panelId, 'up')}
+        onMoveDown={(panelId) => onMovePanel(panelId, 'down')}
         onVariant={handleOpenVariantModal}
         isInsertDisabled={(panelId) =>
           isSubmittingStoryboardTextTask ||
+          isCreatingPanel ||
+          creatingPanelAfterId === panelId ||
+          movingPanelId === panelId ||
+          insertingAfterPanelId === panelId ||
+          submittingVariantPanelId === panelId
+        }
+        isMoveDisabled={(panelId) =>
+          isSubmittingStoryboardTextTask ||
+          isCreatingPanel ||
+          creatingPanelAfterId === panelId ||
+          movingPanelId === panelId ||
           insertingAfterPanelId === panelId ||
           submittingVariantPanelId === panelId
         }

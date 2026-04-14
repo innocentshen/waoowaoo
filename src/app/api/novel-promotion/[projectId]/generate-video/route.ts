@@ -179,15 +179,15 @@ async function validateVideoCapabilityCombination(input: {
   payload: unknown
   projectId: string
   userId: string
-}) {
+}): Promise<Record<string, CapabilityValue> | null> {
   const payload = input.payload
-  if (!isRecord(payload)) return
+  if (!isRecord(payload)) return null
   const modelKey = resolveVideoModelKeyFromPayload(payload)
-  if (!modelKey) return
+  if (!modelKey) return null
 
   // Skip validation for models not in the built-in capability catalog
   const builtinCaps = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
-  if (!builtinCaps) return
+  if (!builtinCaps) return null
 
   const runtimeSelections = toVideoRuntimeSelections(payload.generationOptions)
   runtimeSelections.generationMode = resolveVideoGenerationMode(payload)
@@ -234,6 +234,28 @@ async function validateVideoCapabilityCombination(input: {
       },
     })
   }
+
+  return resolvedOptions
+}
+
+function buildResolvedVideoGenerationOptions(
+  rawOptions: unknown,
+  resolvedOptions: Record<string, CapabilityValue> | null,
+): Record<string, CapabilityValue> | undefined {
+  const runtimeSelections = toVideoRuntimeSelections(rawOptions)
+  const nextOptions: Record<string, CapabilityValue> = {}
+
+  for (const [field, value] of Object.entries(resolvedOptions || {})) {
+    if (field === 'generationMode') continue
+    nextOptions[field] = value
+  }
+
+  for (const [field, value] of Object.entries(runtimeSelections)) {
+    if (field === 'generationMode') continue
+    nextOptions[field] = value
+  }
+
+  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined
 }
 
 function buildVideoPanelBillingInfoOrThrow(payload: unknown) {
@@ -375,20 +397,28 @@ export const POST = apiHandler(async (
       field: 'count',
     })
   }
-  await validateVideoCapabilityCombination({
+  const resolvedGenerationOptions = await validateVideoCapabilityCombination({
     payload: body,
     projectId,
     userId: session.user.id,
   })
+  const effectiveGenerationOptions = buildResolvedVideoGenerationOptions(
+    body.generationOptions,
+    resolvedGenerationOptions,
+  )
+  const taskBody: Record<string, unknown> = {
+    ...body,
+    ...(effectiveGenerationOptions ? { generationOptions: effectiveGenerationOptions } : {}),
+  }
 
   if (isBatch) {
-    if (body?.videoOperation) {
+    if (taskBody.videoOperation) {
       throw new ApiError('INVALID_PARAMS', {
         code: 'VIDEO_OPERATION_ALL_UNSUPPORTED',
         field: 'videoOperation',
       })
     }
-    const episodeId = typeof body?.episodeId === 'string' ? body.episodeId : ''
+    const episodeId = typeof taskBody.episodeId === 'string' ? taskBody.episodeId : ''
     if (!episodeId) {
       throw new ApiError('INVALID_PARAMS')
     }
@@ -429,7 +459,7 @@ export const POST = apiHandler(async (
             targetType: 'NovelPromotionPanel',
             targetId: panel.panelId,
             payload: withTaskUiPayload(
-              buildSingleVideoTaskPayload(body as Record<string, unknown>, {
+              buildSingleVideoTaskPayload(taskBody as Record<string, unknown>, {
                 requestSeed,
                 requestedCount,
                 sequence: index,
@@ -444,7 +474,7 @@ export const POST = apiHandler(async (
               sequence: index,
             }),
             billingInfo: buildVideoPanelBillingInfoOrThrow({
-              ...(body as Record<string, unknown>),
+              ...(taskBody as Record<string, unknown>),
               count: 1,
             }),
           }),
@@ -455,8 +485,8 @@ export const POST = apiHandler(async (
     return NextResponse.json({ tasks: results, total: panels.length * requestedCount })
   }
 
-  const storyboardId = body?.storyboardId
-  const panelIndex = body?.panelIndex
+  const storyboardId = taskBody.storyboardId
+  const panelIndex = taskBody.panelIndex
   if (!storyboardId || panelIndex === undefined) {
     throw new ApiError('INVALID_PARAMS')
   }
@@ -483,7 +513,7 @@ export const POST = apiHandler(async (
         targetType: 'NovelPromotionPanel',
         targetId: panel.id,
         payload: withTaskUiPayload(
-          buildSingleVideoTaskPayload(body as Record<string, unknown>, {
+          buildSingleVideoTaskPayload(taskBody as Record<string, unknown>, {
             requestSeed,
             requestedCount,
             sequence: index,
@@ -498,7 +528,7 @@ export const POST = apiHandler(async (
           sequence: index,
         }),
         billingInfo: buildVideoPanelBillingInfoOrThrow({
-          ...(body as Record<string, unknown>),
+          ...(taskBody as Record<string, unknown>),
           count: 1,
         }),
       }),

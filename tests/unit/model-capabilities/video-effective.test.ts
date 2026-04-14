@@ -62,5 +62,25 @@ describe('model-capabilities/video-effective', () => {
     expect(durationField?.options).toEqual([8])
     expect(durationField?.value).toBe(8)
   })
+
+  it('prefers project aspect ratio when the selection is missing', () => {
+    const definitions = resolveEffectiveVideoCapabilityDefinitions({
+      videoCapabilities: {
+        aspectRatioOptions: ['1:1', '16:9', '9:16'],
+      },
+    })
+
+    const normalized = normalizeVideoGenerationSelections({
+      definitions,
+      preferredSelection: {
+        aspectRatio: '9:16',
+      },
+      selection: {},
+    })
+
+    expect(normalized).toEqual({
+      aspectRatio: '9:16',
+    })
+  })
 })
 

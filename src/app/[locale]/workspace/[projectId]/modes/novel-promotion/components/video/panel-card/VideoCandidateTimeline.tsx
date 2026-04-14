@@ -36,6 +36,7 @@ interface VideoCandidateTimelineProps {
   viewerPanelIndex?: number
   viewerState: { panelIndex: number; candidateId?: string } | null
   defaultVideoModel: string
+  videoRatio?: string
   capabilityOverrides?: CapabilitySelections
   userVideoModels?: VideoModelOption[]
   videoGenerationCount: number
@@ -174,6 +175,7 @@ export default function VideoCandidateTimeline({
   viewerPanelIndex,
   viewerState,
   defaultVideoModel,
+  videoRatio,
   capabilityOverrides,
   userVideoModels,
   videoGenerationCount,
@@ -299,11 +301,16 @@ export default function VideoCandidateTimeline({
     setExtendInstruction('')
     setExtendDuration(4)
   }, [viewerPanelResetKey])
+  const preferredSelection = useMemo(
+    () => (videoRatio ? { aspectRatio: videoRatio } : undefined),
+    [videoRatio],
+  )
 
   const viewerVideoModel = usePanelVideoModel({
     defaultVideoModel: viewerPanel?.defaultVideoModel || defaultVideoModel,
     capabilityOverrides,
     userVideoModels,
+    preferredSelection,
     onPersistSelectedModel: (modelKey) => {
       if (!viewerPanel) return
       void onUpdatePanelVideoModel(viewerPanel.storyboardId, viewerPanel.panelIndex, modelKey)

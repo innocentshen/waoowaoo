@@ -251,6 +251,7 @@
         "modifyFailed": "Modify failed: {error}",
         "selectCandidateFailed": "Select candidate failed: {error}",
         "insertPanelFailed": "Insert shot failed: {error}",
+        "movePanelFailed": "Move shot failed: {error}",
         "addPanelFailed": "Add shot failed: {error}",
         "deletePanelFailed": "Delete shot failed: {error}",
         "deleteGroupFailed": "Delete storyboard group failed: {error}",
@@ -386,6 +387,8 @@
     "panelActions": {
         "insertPanel": "Insert Panel",
         "panelVariant": "Panel Variant",
+        "moveUp": "Move Earlier",
+        "moveDown": "Move Later",
         "insertHere": "Insert panel here",
         "generateVariant": "Generate variant based on this panel",
         "needImage": "Need to generate image first",

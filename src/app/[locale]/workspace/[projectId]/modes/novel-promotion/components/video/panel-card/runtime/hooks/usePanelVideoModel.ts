@@ -19,6 +19,7 @@ interface UsePanelVideoModelParams {
   capabilityOverrides?: CapabilitySelections
   userVideoModels?: VideoModelOption[]
   fixedGenerationMode?: VideoGenerationMode
+  preferredSelection?: VideoGenerationOptions
   onPersistSelectedModel?: (modelKey: string) => void
   onPersistGenerationOptions?: (modelKey: string, generationOptions: VideoGenerationOptions) => void
 }
@@ -68,6 +69,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isGenerationOptionValue(value: unknown): value is VideoGenerationOptionValue {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+function sanitizeGenerationOptions(
+  selection: VideoGenerationOptions | undefined,
+): VideoGenerationOptions | undefined {
+  if (!selection) return undefined
+
+  const nextSelection: VideoGenerationOptions = {}
+  for (const [field, value] of Object.entries(selection)) {
+    if (!isGenerationOptionValue(value)) continue
+    nextSelection[field] = value
+  }
+
+  return Object.keys(nextSelection).length > 0 ? nextSelection : undefined
+}
+
+function getGenerationOptionsSignature(selection: VideoGenerationOptions | undefined): string {
+  const sanitizedSelection = sanitizeGenerationOptions(selection)
+  if (!sanitizedSelection) return ''
+
+  return JSON.stringify(
+    Object.entries(sanitizedSelection).sort(([leftField], [rightField]) => leftField.localeCompare(rightField)),
+  )
+}
+
+function parseGenerationOptionsSignature(signature: string): VideoGenerationOptions | undefined {
+  if (!signature) return undefined
+
+  const entries = JSON.parse(signature) as Array<[string, VideoGenerationOptionValue]>
+  return Object.fromEntries(entries)
+}
+
+function areGenerationOptionsEqual(
+  left: VideoGenerationOptions,
+  right: VideoGenerationOptions,
+): boolean {
+  const leftEntries = Object.entries(left)
+  const rightEntries = Object.entries(right)
+  if (leftEntries.length !== rightEntries.length) return false
+
+  for (const [field, value] of leftEntries) {
+    if (right[field] !== value) return false
+  }
+
+  return true
 }
 
 function readSelectionForModel(
@@ -161,6 +207,7 @@ export function usePanelVideoModel({
   capabilityOverrides,
   userVideoModels,
   fixedGenerationMode = 'normal',
+  preferredSelection,
   onPersistSelectedModel,
   onPersistGenerationOptions,
 }: UsePanelVideoModelParams) {
@@ -203,30 +250,51 @@ export function usePanelVideoModel({
     () => readSelectionForModel(capabilityOverrides, selectedModel),
     [capabilityOverrides, selectedModel],
   )
+  const preferredSelectionSignature = useMemo(
+    () => getGenerationOptionsSignature(preferredSelection),
+    [preferredSelection],
+  )
+  const stablePreferredSelection = useMemo(
+    () => parseGenerationOptionsSignature(preferredSelectionSignature),
+    [preferredSelectionSignature],
+  )
 
   useEffect(() => {
-    setGenerationOptions(normalizeVideoGenerationSelections({
+    const nextGenerationOptions = normalizeVideoGenerationSelections({
       definitions: capabilityDefinitions,
       pricingTiers,
       selection: selectedModelOverrides,
-    }))
-  }, [selectedModel, capabilityDefinitions, pricingTiers, selectedModelOverrides])
+      preferredSelection: stablePreferredSelection,
+    })
+    setGenerationOptions((previous) => (
+      areGenerationOptionsEqual(previous, nextGenerationOptions)
+        ? previous
+        : nextGenerationOptions
+    ))
+  }, [selectedModel, capabilityDefinitions, pricingTiers, preferredSelectionSignature, selectedModelOverrides, stablePreferredSelection])
 
   useEffect(() => {
-    setGenerationOptions((previous) => normalizeVideoGenerationSelections({
-      definitions: capabilityDefinitions,
-      pricingTiers,
-      selection: previous,
-    }))
-  }, [capabilityDefinitions, pricingTiers])
+    setGenerationOptions((previous) => {
+      const nextGenerationOptions = normalizeVideoGenerationSelections({
+        definitions: capabilityDefinitions,
+        pricingTiers,
+        selection: previous,
+        preferredSelection: stablePreferredSelection,
+      })
+      return areGenerationOptionsEqual(previous, nextGenerationOptions)
+        ? previous
+        : nextGenerationOptions
+    })
+  }, [capabilityDefinitions, pricingTiers, preferredSelectionSignature, stablePreferredSelection])
 
   const effectiveFields = useMemo(
     () => resolveEffectiveVideoCapabilityFields({
       definitions: capabilityDefinitions,
       pricingTiers,
       selection: generationOptions,
+      preferredSelection: stablePreferredSelection,
     }),
-    [capabilityDefinitions, generationOptions, pricingTiers],
+    [capabilityDefinitions, generationOptions, pricingTiers, stablePreferredSelection],
   )
   const missingCapabilityFields = useMemo(
     () => effectiveFields
@@ -279,6 +347,7 @@ export function usePanelVideoModel({
         [field]: parsedValue,
       },
       pinnedFields: [field],
+      preferredSelection: stablePreferredSelection,
     })
     setGenerationOptions(nextGenerationOptions)
     onPersistGenerationOptions?.(selectedModel, nextGenerationOptions)
@@ -289,6 +358,7 @@ export function usePanelVideoModel({
     onPersistGenerationOptions,
     pricingTiers,
     selectedModel,
+    stablePreferredSelection,
   ])
 
   return {

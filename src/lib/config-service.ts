@@ -187,7 +187,7 @@ export async function getProjectModelConfig(
     editModel: extractModelKey(projectData?.editModel) || null,
     videoModel: extractModelKey(projectData?.videoModel) || null,
     audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
-    videoRatio: projectData?.videoRatio || '16:9',
+    videoRatio: projectData?.videoRatio || '9:16',
     artStyle: projectData?.artStyle || null,
     capabilityDefaults: parseCapabilitySelections(userPref?.capabilityDefaults),
     capabilityOverrides: parseCapabilitySelections(projectData?.capabilityOverrides),
@@ -220,6 +220,7 @@ export function resolveModelCapabilityGenerationOptions(input: {
   capabilityDefaults?: CapabilitySelections
   capabilityOverrides?: CapabilitySelections
   runtimeSelections?: Record<string, CapabilityValue>
+  preferredSelection?: Record<string, CapabilityValue>
 }): Record<string, CapabilityValue> {
   const parsedRaw = parseModelKeyStrict(input.modelKey)
   const parsed = parsedRaw ? migrateParsedModelKey(parsedRaw) : null
@@ -236,6 +237,7 @@ export function resolveModelCapabilityGenerationOptions(input: {
     capabilityDefaults: input.capabilityDefaults,
     capabilityOverrides: input.capabilityOverrides,
     runtimeSelections: input.runtimeSelections,
+    preferredSelection: input.preferredSelection,
     requireAllFields: input.modelType !== 'llm',
   })
 
@@ -261,6 +263,9 @@ export async function resolveProjectModelCapabilityGenerationOptions(input: {
     capabilityDefaults: config.capabilityDefaults,
     capabilityOverrides: config.capabilityOverrides,
     runtimeSelections: input.runtimeSelections,
+    preferredSelection: input.modelType === 'video' && config.videoRatio
+      ? { aspectRatio: config.videoRatio }
+      : undefined,
   })
 }
 

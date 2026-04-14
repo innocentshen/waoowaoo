@@ -376,6 +376,7 @@ export default function VideoRenderPanel({
         viewerPanelIndex={viewerState?.panelIndex ?? -1}
         viewerState={viewerState}
         defaultVideoModel={defaultVideoModel}
+        videoRatio={videoRatio}
         capabilityOverrides={capabilityOverrides}
         userVideoModels={userVideoModels}
         videoGenerationCount={videoGenerationCount}
