@@ -1,5 +1,7 @@
 import OpenAI from 'openai'
+import { GoogleGenAI } from '@google/genai'
 import { setProxy } from '../../../lib/prompts/proxy'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 export type TestStepName = 'models' | 'textGen' | 'imageGen' | 'credits' | 'audioGen'
 export type TestStepStatus = 'pass' | 'fail' | 'skip'
@@ -429,39 +431,19 @@ async function testArkProvider(apiKey: string): Promise<TestProviderResult> {
 // Google AI Studio (official)
 // ---------------------------------------------------------------------------
 
-async function testGoogleOfficial(apiKey: string): Promise<TestProviderResult> {
+async function testGoogleOfficial(apiKey: string, baseUrl?: string): Promise<TestProviderResult> {
   await setProxy()
   console.log('[provider-test] testGoogleOfficial')
   const steps: TestStep[] = []
   const model = 'gemini-3-flash-preview'
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: '你好' }] }],
-      }),
-      signal: AbortSignal.timeout(30_000),
-    })
+    const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
+    const data = await ai.models.generateContent({
+      model,
+      contents: [{ parts: [{ text: '你好' }] }],
+    }) as GeminiGenerateContentResponse
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
-      steps.push({
-        name: 'textGen',
-        status: 'fail',
-        model,
-        message: `HTTP ${response.status}`,
-        detail: errorText.slice(0, 500),
-      })
-      return { success: false, steps }
-    }
-
-    const data = await response.json() as GeminiGenerateContentResponse
     if (data.error) {
       steps.push({
         name: 'textGen',
@@ -859,7 +841,7 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
     case 'ark':
       return testArkProvider(apiKey)
     case 'google':
-      return testGoogleOfficial(apiKey)
+      return testGoogleOfficial(apiKey, baseUrl)
     case 'openrouter':
       return testOpenRouterProvider(apiKey)
     case 'minimax':
@@ -873,7 +855,7 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
     case 'siliconflow':
       return testSiliconFlowProvider(apiKey)
     case 'grok':
-      return testCompatibleProvider('https://api.x.ai/v1', apiKey, llmModel || 'grok-4')
+      return testCompatibleProvider(baseUrl || 'https://api.x.ai/v1', apiKey, llmModel || 'grok-4')
     default:
       return {
         success: false,

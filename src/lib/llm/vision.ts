@@ -23,6 +23,7 @@ import {
 } from './runtime-shared'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 type GoogleVisionPart = { inlineData: { mimeType: string; data: string } } | { text: string }
 type ArkVisionContentItem = { type: 'input_image'; image_url: string } | { type: 'input_text'; text: string }
@@ -84,7 +85,7 @@ export async function chatCompletionWithVision(
     try {
       const providerConfig = await getProviderConfig(userId, provider)
       if (providerKey === 'google' || providerKey === 'gemini-compatible') {
-        const ai = new GoogleGenAI({ apiKey: providerConfig.apiKey })
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions(providerConfig))
         const { normalizeToBase64ForGeneration } = await import('@/lib/media/outbound-image')
 
         const parts: GoogleVisionPart[] = []

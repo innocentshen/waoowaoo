@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { testProviderConnection } from '@/lib/user-api/provider-test'
+
+const googleGenAiConstructorMock = vi.hoisted(() => vi.fn())
+const googleGenerateContentMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    candidates: [
+      {
+        content: {
+          parts: [{ text: 'hello from google' }],
+        },
+      },
+    ],
+  })),
+)
 
 const fetchMock = vi.hoisted(() =>
   vi.fn(async (input: unknown) => {
@@ -19,6 +31,20 @@ const fetchMock = vi.hoisted(() =>
     return new Response('not-found', { status: 404 })
   }),
 )
+
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class GoogleGenAI {
+    constructor(options: unknown) {
+      googleGenAiConstructorMock(options)
+    }
+
+    models = {
+      generateContent: googleGenerateContentMock,
+    }
+  },
+}))
+
+import { testProviderConnection } from '@/lib/user-api/provider-test'
 
 describe('provider test connection', () => {
   beforeEach(() => {
@@ -77,6 +103,56 @@ describe('provider test connection', () => {
       name: 'models',
       status: 'pass',
       message: 'Found 1 models',
+    })
+  })
+
+  it('uses custom baseUrl for grok probe', async () => {
+    fetchMock.mockImplementationOnce(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('grok-proxy.example/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'grok-4' }] }), { status: 200 })
+      }
+      return new Response('not-found', { status: 404 })
+    })
+
+    const result = await testProviderConnection({
+      apiType: 'grok',
+      apiKey: 'grok-key',
+      baseUrl: 'https://grok-proxy.example/v1',
+    })
+
+    expect(result.success).toBe(true)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('https://grok-proxy.example/v1/models'),
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    )
+  })
+
+  it('uses custom baseUrl for google official probe', async () => {
+    const result = await testProviderConnection({
+      apiType: 'google',
+      apiKey: 'google-key',
+      baseUrl: 'https://google-proxy.example',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.steps[0]).toEqual({
+      name: 'textGen',
+      status: 'pass',
+      model: 'gemini-3-flash-preview',
+      message: 'Response: hello from google',
+    })
+    expect(googleGenAiConstructorMock).toHaveBeenCalledWith({
+      apiKey: 'google-key',
+      httpOptions: {
+        baseUrl: 'https://google-proxy.example',
+      },
+    })
+    expect(googleGenerateContentMock).toHaveBeenCalledWith({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: '你好' }] }],
     })
   })
 

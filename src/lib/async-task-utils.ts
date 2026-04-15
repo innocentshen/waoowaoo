@@ -7,6 +7,7 @@
 
 import { logInternal } from './logging/semantic'
 import { buildFalQueueUrl } from '@/lib/providers/fal/base-url'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 export interface TaskStatus {
     status: 'pending' | 'completed' | 'failed'
@@ -121,14 +122,14 @@ export async function queryBananaTaskStatus(requestId: string, apiKey: string): 
  * @param batchName 任务名称（如 batches/xxx）
  * @param apiKey Google AI API Key
  */
-export async function queryGeminiBatchStatus(batchName: string, apiKey: string): Promise<TaskStatus> {
+export async function queryGeminiBatchStatus(batchName: string, apiKey: string, baseUrl?: string): Promise<TaskStatus> {
     if (!apiKey) {
         throw new Error('请配置 Google AI API Key')
     }
 
     try {
         const { GoogleGenAI } = await import('@google/genai')
-        const ai = new GoogleGenAI({ apiKey })
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
         // 🔥 使用 ai.batches.get 查询任务状态
         const batchClient = ai as unknown as GeminiBatchClient
@@ -190,7 +191,7 @@ export async function queryGeminiBatchStatus(batchName: string, apiKey: string):
  * @param operationName 操作名称（如 operations/xxx）
  * @param apiKey Google AI API Key
  */
-export async function queryGoogleVideoStatus(operationName: string, apiKey: string): Promise<TaskStatus> {
+export async function queryGoogleVideoStatus(operationName: string, apiKey: string, baseUrl?: string): Promise<TaskStatus> {
     if (!apiKey) {
         throw new Error('请配置 Google AI API Key')
     }
@@ -199,7 +200,7 @@ export async function queryGoogleVideoStatus(operationName: string, apiKey: stri
 
     try {
         const { GoogleGenAI, GenerateVideosOperation } = await import('@google/genai')
-        const ai = new GoogleGenAI({ apiKey })
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
         const operation = new GenerateVideosOperation()
         operation.name = operationName
         const op = await ai.operations.getVideosOperation({ operation })

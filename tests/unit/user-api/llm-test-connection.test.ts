@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const googleGenAiConstructorMock = vi.hoisted(() => vi.fn())
+const googleGenerateContentMock = vi.hoisted(() => vi.fn(async () => ({ candidates: [] })))
+const openAIConstructorMock = vi.hoisted(() => vi.fn())
 const openAIState = vi.hoisted(() => ({
   modelList: vi.fn(async () => ({ data: [] })),
   create: vi.fn(async () => ({
@@ -26,6 +29,10 @@ const fetchMock = vi.hoisted(() =>
 
 vi.mock('openai', () => ({
   default: class OpenAI {
+    constructor(options: unknown) {
+      openAIConstructorMock(options)
+    }
+
     models = {
       list: openAIState.modelList,
     }
@@ -33,6 +40,18 @@ vi.mock('openai', () => ({
       completions: {
         create: openAIState.create,
       },
+    }
+  },
+}))
+
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class GoogleGenAI {
+    constructor(options: unknown) {
+      googleGenAiConstructorMock(options)
+    }
+
+    models = {
+      generateContent: googleGenerateContentMock,
     }
   },
 }))
@@ -111,5 +130,47 @@ describe('llm test connection', () => {
     expect(result.message).toBe('grok 连接成功')
     expect(result.model).toBe('grok-4')
     expect(result.answer).toBe('2')
+  })
+  it('passes custom google baseUrl into the google sdk probe', async () => {
+    const result = await testLlmConnection({
+      provider: 'google',
+      apiKey: 'google-key',
+      baseUrl: 'https://google-proxy.example/',
+    })
+
+    expect(result.provider).toBe('google')
+    expect(result.message).toBe('google 连接成功')
+    expect(googleGenAiConstructorMock).toHaveBeenCalledWith({
+      apiKey: 'google-key',
+      httpOptions: {
+        baseUrl: 'https://google-proxy.example',
+      },
+    })
+    expect(googleGenerateContentMock).toHaveBeenCalledWith({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: '你好' }] }],
+    })
+  })
+
+  it('uses custom grok baseUrl when provided', async () => {
+    openAIState.create.mockResolvedValueOnce({
+      model: 'grok-4',
+      choices: [{ message: { content: '2' } }],
+    })
+
+    const result = await testLlmConnection({
+      provider: 'grok',
+      apiKey: 'grok-key',
+      model: 'grok-4',
+      baseUrl: 'https://grok-proxy.example/v1',
+    })
+
+    expect(result.provider).toBe('grok')
+    expect(result.model).toBe('grok-4')
+    expect(result.answer).toBe('2')
+    expect(openAIConstructorMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: 'https://grok-proxy.example/v1',
+      apiKey: 'grok-key',
+    }))
   })
 })

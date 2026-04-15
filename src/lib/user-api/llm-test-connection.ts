@@ -1,5 +1,7 @@
 import OpenAI from 'openai'
+import { GoogleGenAI } from '@google/genai'
 import { ApiError } from '@/lib/api-errors'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 type SupportedProvider =
   | 'openrouter'
@@ -68,15 +70,12 @@ function requireBaseUrl(payload: TestConnectionPayload): string {
   return baseUrl
 }
 
-async function testGoogleAI(apiKey: string): Promise<void> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-    { method: 'GET' },
-  )
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Google AI 认证失败: ${error}`)
-  }
+async function testGoogleAI(apiKey: string, baseUrl?: string): Promise<void> {
+  const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
+  await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: [{ parts: [{ text: '你好' }] }],
+  })
 }
 
 async function testOpenAICompatibleConnection(params: {
@@ -174,7 +173,7 @@ export async function testLlmConnection(payload: TestConnectionPayload): Promise
       return { provider, message: 'openrouter 连接成功', ...tested }
     }
     case 'google':
-      await testGoogleAI(apiKey)
+      await testGoogleAI(apiKey, payload.baseUrl)
       return { provider, message: 'google 连接成功' }
     case 'anthropic': {
       const tested = await testOpenAICompatibleConnection({
@@ -203,7 +202,9 @@ export async function testLlmConnection(payload: TestConnectionPayload): Promise
     case 'grok': {
       const tested = await testOpenAICompatibleConnection({
         apiKey,
-        baseURL: 'https://api.x.ai/v1',
+        baseURL: typeof payload.baseUrl === 'string' && payload.baseUrl.trim()
+          ? payload.baseUrl.trim()
+          : 'https://api.x.ai/v1',
         model: requestedModel || 'grok-4',
       })
       return { provider, message: 'grok 连接成功', ...tested }

@@ -542,8 +542,8 @@ async function pollGeminiTask(
     batchName: string,
     userId: string
 ): Promise<PollResult> {
-    const { apiKey } = await getProviderConfig(userId, 'google')
-    const result = await queryGeminiBatchStatus(batchName, apiKey)
+    const { apiKey, baseUrl } = await getProviderConfig(userId, 'google')
+    const result = await queryGeminiBatchStatus(batchName, apiKey, baseUrl)
 
     return {
         status: result.status,
@@ -560,8 +560,8 @@ async function pollGoogleVideoTask(
     operationName: string,
     userId: string
 ): Promise<PollResult> {
-    const { apiKey } = await getProviderConfig(userId, 'google')
-    const result = await queryGoogleVideoStatus(operationName, apiKey)
+    const { apiKey, baseUrl } = await getProviderConfig(userId, 'google')
+    const result = await queryGoogleVideoStatus(operationName, apiKey, baseUrl)
 
     return {
         status: result.status,

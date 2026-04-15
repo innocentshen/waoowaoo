@@ -156,11 +156,6 @@ function dedupeCustomModels(models: CustomModel[]): CustomModel[] {
 
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
   const providerKey = getProviderKey(providerId)
-  if (providerKey === 'grok') {
-    // The built-in Grok provider is reserved for the official xAI API.
-    // Grok-compatible proxies should be configured through openai-compatible.
-    return 'https://api.x.ai/v1'
-  }
   if (providerKey === 'minimax') {
     return 'https://api.minimaxi.com/v1'
   }

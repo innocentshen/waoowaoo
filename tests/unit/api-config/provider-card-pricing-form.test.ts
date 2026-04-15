@@ -155,6 +155,20 @@ describe('provider card pricing form behavior', () => {
     })
   })
 
+  it('includes baseUrl for google provider connection test payload', () => {
+    const payload = buildProviderConnectionPayload({
+      providerKey: 'google',
+      apiKey: ' google-key ',
+      baseUrl: ' https://google-proxy.example ',
+    })
+
+    expect(payload).toEqual({
+      apiType: 'google',
+      apiKey: 'google-key',
+      baseUrl: 'https://google-proxy.example',
+    })
+  })
+
   it('includes llmModel in provider connection test payload when configured', () => {
     const payload = buildProviderConnectionPayload({
       providerKey: 'openai-compatible',

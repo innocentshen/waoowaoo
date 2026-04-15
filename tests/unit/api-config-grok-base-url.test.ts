@@ -14,7 +14,7 @@ vi.mock('@/lib/crypto-utils', () => ({
   decryptApiKey: vi.fn((value: string) => value.replace(/^enc:/, '')),
 }))
 
-describe('api-config grok base url normalization', () => {
+describe('api-config grok base url handling', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -39,14 +39,14 @@ describe('api-config grok base url normalization', () => {
     })
   })
 
-  it('forces the official xAI base url for grok providers', async () => {
+  it('preserves a custom grok base url when reading provider config', async () => {
     const apiConfig = await import('@/lib/api-config')
 
     const provider = await apiConfig.getProviderConfig('user-1', 'grok')
     expect(provider).toMatchObject({
       id: 'grok',
       apiKey: 'grok-key',
-      baseUrl: 'https://api.x.ai/v1',
+      baseUrl: 'https://proxy.example.com/v1',
     })
   })
 })

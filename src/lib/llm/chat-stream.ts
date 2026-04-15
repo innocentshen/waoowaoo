@@ -39,6 +39,7 @@ import { withStreamChunkTimeout } from './stream-timeout'
 import { shouldUseOpenAIReasoningProviderOptions } from './reasoning-capability'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'grok'])
 
@@ -176,10 +177,7 @@ export async function chatCompletionStream(
     }
 
     if (providerKey === 'google' || providerKey === 'gemini-compatible') {
-      const googleAiOptions = providerConfig.baseUrl
-        ? { apiKey: providerConfig.apiKey, httpOptions: { baseUrl: providerConfig.baseUrl } }
-        : { apiKey: providerConfig.apiKey }
-      const ai = new GoogleGenAI(googleAiOptions)
+      const ai = new GoogleGenAI(buildGoogleGenAIOptions(providerConfig))
       const modelClient = (ai as unknown as { models?: GoogleModelClient }).models
       if (!modelClient || typeof modelClient.generateContentStream !== 'function') {
         throw new Error('GOOGLE_STREAM_UNAVAILABLE: google provider does not expose generateContentStream')

@@ -13,6 +13,7 @@ import { GoogleGenAI } from '@google/genai'
 import { getInternalBaseUrl } from '@/lib/env'
 import { getImageBase64Cached } from './image-cache'
 import { logInternal } from './logging/semantic'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -55,7 +56,8 @@ export async function submitGeminiBatch(
     referenceImages?: string[]
     aspectRatio?: string
     resolution?: string
-  }
+  },
+  baseUrl?: string,
 ): Promise<{
   success: boolean
   batchName?: string
@@ -66,7 +68,7 @@ export async function submitGeminiBatch(
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey })
+    const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
     // 构建 content parts
     const contentParts: UnknownRecord[] = []
@@ -168,7 +170,7 @@ export async function submitGeminiBatch(
  * @param batchName 批量任务名称（如 batches/xxx）
  * @param apiKey Google AI API Key
  */
-export async function queryGeminiBatchStatus(batchName: string, apiKey: string): Promise<{
+export async function queryGeminiBatchStatus(batchName: string, apiKey: string, baseUrl?: string): Promise<{
   status: string
   completed: boolean
   failed: boolean
@@ -181,7 +183,7 @@ export async function queryGeminiBatchStatus(batchName: string, apiKey: string):
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey })
+    const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
     // 🔥 使用 ai.batches.get 查询任务状态
     const batchClient = ai as unknown as GeminiBatchClient

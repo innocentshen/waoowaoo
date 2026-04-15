@@ -199,10 +199,13 @@ export function buildProviderConnectionPayload(params: {
   const apiKey = params.apiKey.trim()
   const compatibleBaseUrl = params.baseUrl?.trim()
   const llmModel = params.llmModel?.trim()
-  const isCompatibleProvider =
-    params.providerKey === 'openai-compatible' || params.providerKey === 'gemini-compatible'
+  const shouldIncludeBaseUrl =
+    params.providerKey === 'openai-compatible'
+    || params.providerKey === 'gemini-compatible'
+    || params.providerKey === 'google'
+    || params.providerKey === 'grok'
 
-  if (isCompatibleProvider && compatibleBaseUrl) {
+  if (shouldIncludeBaseUrl && compatibleBaseUrl) {
     return {
       apiType: params.providerKey,
       apiKey,
@@ -410,7 +413,7 @@ export function useProviderCardState({
     (presetProvider) => presetProvider.id === provider.id,
   )
   const showBaseUrlEdit =
-    ['gemini-compatible', 'openai-compatible'].includes(providerKey) &&
+    ['gemini-compatible', 'openai-compatible', 'google', 'grok'].includes(providerKey) &&
     Boolean(onUpdateBaseUrl)
   const tutorial = getProviderTutorial(provider.id)
 

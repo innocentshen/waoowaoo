@@ -62,4 +62,23 @@ describe('useProviders provider order merge', () => {
       hasApiKey: true,
     })
   })
+
+  it('preserves saved grok baseUrl while keeping the preset localized name', () => {
+    const presetProviders: Provider[] = [
+      { id: 'grok', name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1' },
+    ]
+    const savedProviders: Provider[] = [
+      { id: 'grok', name: 'Grok Legacy', baseUrl: 'https://grok-proxy.example/v1', apiKey: 'grok-key' },
+    ]
+
+    const merged = mergeProvidersForDisplay(savedProviders, presetProviders)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({
+      id: 'grok',
+      name: 'xAI Grok',
+      baseUrl: 'https://grok-proxy.example/v1',
+      apiKey: 'grok-key',
+      hasApiKey: true,
+    })
+  })
 })

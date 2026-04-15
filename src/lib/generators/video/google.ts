@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai'
 import { BaseVideoGenerator, VideoGenerateParams, GenerateResult } from '../base'
 import { getProviderConfig } from '@/lib/api-config'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 interface GoogleVeoOptions {
     modelId?: string
@@ -49,8 +50,8 @@ export class GoogleVeoVideoGenerator extends BaseVideoGenerator {
     protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
         const { userId, imageUrl, prompt = '', options = {} } = params
 
-        const { apiKey } = await getProviderConfig(userId, this.providerId)
-        const ai = new GoogleGenAI({ apiKey })
+        const { apiKey, baseUrl } = await getProviderConfig(userId, this.providerId)
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
         const {
             modelId = 'veo-3.1-generate-preview',

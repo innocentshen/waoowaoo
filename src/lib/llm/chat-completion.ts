@@ -36,6 +36,7 @@ import {
 } from './runtime-shared'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'grok'])
 
@@ -175,10 +176,7 @@ export async function chatCompletion(
       }
 
       if (providerKey === 'google' || providerKey === 'gemini-compatible') {
-        const googleAiOptions = providerConfig.baseUrl
-          ? { apiKey: providerConfig.apiKey, httpOptions: { baseUrl: providerConfig.baseUrl } }
-          : { apiKey: providerConfig.apiKey }
-        const ai = new GoogleGenAI(googleAiOptions)
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions(providerConfig))
 
         const systemParts = messages
           .filter((m) => m.role === 'system')

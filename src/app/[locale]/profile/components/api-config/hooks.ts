@@ -139,7 +139,7 @@ export function mergeProvidersForDisplay(
         const matchedPreset = presetProviders.find((presetProvider) => presetProvider.id === providerKey)
         if (matchedPreset) {
             const apiKey = savedProvider.apiKey || ''
-            const providerBaseUrl = providerKey === 'minimax' || providerKey === 'grok'
+            const providerBaseUrl = providerKey === 'minimax'
                 ? matchedPreset.baseUrl
                 : (savedProvider.baseUrl || matchedPreset.baseUrl)
             merged.push({

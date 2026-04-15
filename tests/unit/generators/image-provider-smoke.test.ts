@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const googleGenAiConstructorMock = vi.hoisted(() => vi.fn())
 const googleGenerateContentMock = vi.hoisted(() => vi.fn())
 const googleGenerateImagesMock = vi.hoisted(() => vi.fn())
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
@@ -9,6 +10,10 @@ const normalizeToBase64ForGenerationMock = vi.hoisted(() => vi.fn(async () => 'U
 
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class GoogleGenAI {
+    constructor(options: unknown) {
+      googleGenAiConstructorMock(options)
+    }
+
     models = {
       generateContent: googleGenerateContentMock,
       generateImages: googleGenerateImagesMock,
@@ -54,6 +59,7 @@ describe('image provider smoke tests', () => {
     getProviderConfigMock.mockResolvedValueOnce({
       id: 'google',
       apiKey: 'google-key',
+      baseUrl: 'https://google-proxy.example',
     })
     googleGenerateContentMock.mockResolvedValueOnce({
       candidates: [
@@ -93,6 +99,12 @@ describe('image provider smoke tests', () => {
         responseModalities: ['TEXT', 'IMAGE'],
         imageConfig: { aspectRatio: '3:4' },
       }),
+    })
+    expect(googleGenAiConstructorMock).toHaveBeenCalledWith({
+      apiKey: 'google-key',
+      httpOptions: {
+        baseUrl: 'https://google-proxy.example',
+      },
     })
   })
 
@@ -268,6 +280,7 @@ describe('image provider smoke tests', () => {
     getProviderConfigMock.mockResolvedValueOnce({
       id: 'google',
       apiKey: 'google-key',
+      baseUrl: 'https://google-proxy.example/',
     })
     googleGenerateImagesMock.mockResolvedValueOnce({
       generatedImages: [
@@ -301,6 +314,12 @@ describe('image provider smoke tests', () => {
         numberOfImages: 1,
         aspectRatio: '16:9',
         imageSize: '2K',
+      },
+    })
+    expect(googleGenAiConstructorMock).toHaveBeenCalledWith({
+      apiKey: 'google-key',
+      httpOptions: {
+        baseUrl: 'https://google-proxy.example',
       },
     })
   })

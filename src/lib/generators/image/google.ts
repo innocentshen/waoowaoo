@@ -13,6 +13,7 @@ import { getInternalBaseUrl } from '@/lib/env'
 import { BaseImageGenerator, ImageGenerateParams, GenerateResult } from '../base'
 import { getProviderConfig } from '@/lib/api-config'
 import { getImageBase64Cached } from '@/lib/image-cache'
+import { buildGoogleGenAIOptions } from '@/lib/providers/google/shared'
 import { setProxy } from '../../../../lib/prompts/proxy'
 
 type ContentPart = { inlineData: { mimeType: string; data: string } } | { text: string }
@@ -45,7 +46,7 @@ export class GoogleGeminiImageGenerator extends BaseImageGenerator {
     protected async doGenerate(params: ImageGenerateParams): Promise<GenerateResult> {
         const { userId, prompt, referenceImages = [], options = {} } = params
 
-        const { apiKey } = await getProviderConfig(userId, 'google')
+        const { apiKey, baseUrl } = await getProviderConfig(userId, 'google')
         const {
             aspectRatio,
             resolution
@@ -72,7 +73,7 @@ export class GoogleGeminiImageGenerator extends BaseImageGenerator {
         }
 
         await setProxy()
-        const ai = new GoogleGenAI({ apiKey })
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
         // 构建内容数组
         const contentParts: ContentPart[] = []
@@ -190,7 +191,7 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
     protected async doGenerate(params: ImageGenerateParams): Promise<GenerateResult> {
         const { userId, prompt, options = {} } = params
 
-        const { apiKey } = await getProviderConfig(userId, 'google')
+        const { apiKey, baseUrl } = await getProviderConfig(userId, 'google')
         const {
             aspectRatio,
             resolution,
@@ -217,7 +218,7 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
         }
 
         await setProxy()
-        const ai = new GoogleGenAI({ apiKey })
+        const ai = new GoogleGenAI(buildGoogleGenAIOptions({ apiKey, baseUrl }))
 
         try {
             // 使用 Imagen API（不同于 Gemini generateContent）
@@ -266,7 +267,7 @@ export class GoogleGeminiBatchImageGenerator extends BaseImageGenerator {
     protected async doGenerate(params: ImageGenerateParams): Promise<GenerateResult> {
         const { userId, prompt, referenceImages = [], options = {} } = params
 
-        const { apiKey } = await getProviderConfig(userId, 'google')
+        const { apiKey, baseUrl } = await getProviderConfig(userId, 'google')
         const {
             aspectRatio,
             resolution
@@ -286,7 +287,7 @@ export class GoogleGeminiBatchImageGenerator extends BaseImageGenerator {
             referenceImages,
             ...(aspectRatio ? { aspectRatio } : {}),
             ...(resolution ? { resolution } : {}),
-        })
+        }, baseUrl)
 
         if (!result.success || !result.batchName) {
             return {

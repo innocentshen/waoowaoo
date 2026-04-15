@@ -13,6 +13,10 @@ interface ProviderBaseFieldsProps {
 export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsProps) {
   const baseUrlPlaceholder = (() => {
     switch (state.providerKey) {
+      case 'google':
+        return 'https://generativelanguage.googleapis.com'
+      case 'grok':
+        return 'https://api.x.ai/v1'
       case 'gemini-compatible':
         return 'https://your-api-domain.com'
       case 'openai-compatible':

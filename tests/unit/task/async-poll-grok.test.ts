@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const getProviderConfigMock = vi.hoisted(() => vi.fn(async () => ({
   id: 'grok',
   apiKey: 'grok-key',
-  baseUrl: 'https://api.x.ai/v1',
+  baseUrl: 'https://grok-proxy.example/v1',
 })))
 
 vi.mock('@/lib/api-config', () => ({
@@ -20,7 +20,7 @@ describe('async poll GROK video status mapping', () => {
     getProviderConfigMock.mockResolvedValue({
       id: 'grok',
       apiKey: 'grok-key',
-      baseUrl: 'https://api.x.ai/v1',
+      baseUrl: 'https://grok-proxy.example/v1',
     })
     fetchSpy = vi.fn()
     globalThis.fetch = fetchSpy as unknown as typeof fetch
@@ -31,6 +31,15 @@ describe('async poll GROK video status mapping', () => {
 
     const result = await pollAsyncTask('GROK:VIDEO:req_queued', 'user-1')
     expect(result).toEqual({ status: 'pending' })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://grok-proxy.example/v1/videos/req_queued',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer grok-key',
+        },
+      },
+    )
   })
 
   it('maps completed status to video url', async () => {
