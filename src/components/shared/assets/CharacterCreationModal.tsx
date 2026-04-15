@@ -233,7 +233,11 @@ export function CharacterCreationModal({
               options={getImageGenerationCountOptions('reference-to-character')}
               onValueChange={setReferenceCharacterGenerationCount}
               onClick={() => { void handleCreateWithReference() }}
-              actionDisabled={!name.trim() || referenceImagesBase64.length === 0}
+              actionDisabled={
+                !name.trim()
+                || referenceImagesBase64.length === 0
+                || (referenceSubMode === 'extract' && !description.trim())
+              }
               selectDisabled={isSubmitting}
               ariaLabel={t('character.selectReferenceGenerateCount')}
               className="glass-btn-base glass-btn-primary flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"

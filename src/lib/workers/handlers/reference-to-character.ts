@@ -6,7 +6,7 @@ import { queryFalStatus } from '@/lib/async-submit'
 import { fetchWithTimeoutAndRetry } from '@/lib/ark-api'
 import { getProviderConfig } from '@/lib/api-config'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
-import { getUserModelConfig } from '@/lib/config-service'
+import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
@@ -159,8 +159,11 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   }
 
   const userConfig = await getUserModelConfig(job.data.userId)
-  const imageModel = readString(userConfig.characterModel)
-  const analysisModel = readString(userConfig.analysisModel)
+  const projectConfig = isProject
+    ? await getProjectModelConfig(job.data.projectId, job.data.userId)
+    : null
+  const imageModel = readString(projectConfig?.characterModel) || readString(userConfig.characterModel)
+  const analysisModel = readString(projectConfig?.analysisModel) || readString(userConfig.analysisModel)
   if (!imageModel && !extractOnly) {
     throw new Error('请先在设置页面配置角色图片模型')
   }

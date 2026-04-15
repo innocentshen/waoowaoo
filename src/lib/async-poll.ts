@@ -21,6 +21,7 @@ import { queryGeminiBatchStatus, querySeedanceVideoStatus, queryGoogleVideoStatu
 import { getProviderConfig, getUserModels } from './api-config'
 import { buildRenderedTemplateRequest, buildTemplateVariables, normalizeResponseJson, readJsonPath } from './openai-compat-template-runtime'
 import { composeModelKey } from './model-config-contract'
+import { setProxy } from '../../lib/prompts/proxy'
 
 const OPENAI_COMPAT_PROVIDER_PREFIX = 'openai-compatible:'
 const PROVIDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -241,6 +242,8 @@ export async function pollAsyncTask(
     if (!userId) {
         throw new Error('缺少用户ID，无法获取 API Key')
     }
+
+    await setProxy()
 
     const parsed = parseExternalId(externalId)
     _ulogInfo(`[Poll] 解析 ${externalId.slice(0, 30)}... → provider=${parsed.provider}, type=${parsed.type}`)

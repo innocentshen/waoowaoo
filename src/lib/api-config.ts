@@ -61,6 +61,21 @@ type LlmProtocolType = 'responses' | 'chat-completions'
 const LEGACY_PROVIDER_ID_MIGRATIONS: Readonly<Record<string, string>> = {
   qwen: 'bailian',
 }
+const GROK2API_IMAGE_GENERATION_MODEL_IDS = new Set([
+  'grok-imagine-1.0',
+  'grok-imagine-1.0-fast',
+  'grok-imagine-image-lite',
+  'grok-imagine-image',
+  'grok-imagine-image-pro',
+])
+const GROK2API_IMAGE_EDIT_MODEL_IDS = new Set([
+  'grok-imagine-1.0-edit',
+  'grok-imagine-image-edit',
+])
+const GROK2API_VIDEO_MODEL_IDS = new Set([
+  'grok-imagine-1.0-video',
+  'grok-imagine-video',
+])
 
 function migrateLegacyProviderId(providerId: string): string {
   const trimmed = readTrimmedString(providerId)
@@ -152,6 +167,262 @@ function dedupeCustomModels(models: CustomModel[]): CustomModel[] {
   return orderedKeys
     .map((key) => byModelKey.get(key))
     .filter((model): model is CustomModel => !!model)
+}
+
+function areMediaTemplatesEqual(
+  left: OpenAICompatMediaTemplate,
+  right: OpenAICompatMediaTemplate,
+): boolean {
+  const normalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map((item) => normalize(item))
+    if (!value || typeof value !== 'object') return value
+
+    const record = value as Record<string, unknown>
+    const next: Record<string, unknown> = {}
+    for (const key of Object.keys(record).sort()) {
+      next[key] = normalize(record[key])
+    }
+    return next
+  }
+
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+}
+
+function getGenericMediaTemplate(model: Pick<CustomModel, 'type' | 'modelId'>): OpenAICompatMediaTemplate {
+  if (model.type === 'image') {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/generations',
+        contentType: 'application/json',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  return {
+    version: 1,
+    mediaType: 'video',
+    mode: 'async',
+    create: {
+      method: 'POST',
+      path: '/videos',
+      contentType: 'multipart/form-data',
+      multipartFileFields: ['input_reference'],
+      bodyTemplate: {
+        model: '{{model}}',
+        prompt: '{{prompt}}',
+        seconds: '{{duration}}',
+        size: '{{size}}',
+        input_reference: '{{image}}',
+      },
+    },
+    status: {
+      method: 'GET',
+      path: '/videos/{{task_id}}',
+    },
+    content: {
+      method: 'GET',
+      path: '/videos/{{task_id}}/content',
+    },
+    response: {
+      taskIdPath: '$.id',
+      statusPath: '$.status',
+      errorPath: '$.error.message',
+    },
+    polling: {
+      intervalMs: 3000,
+      timeoutMs: 600000,
+      doneStates: ['completed', 'succeeded'],
+      failStates: ['failed', 'error', 'canceled'],
+    },
+  }
+}
+
+function getLegacyGrok2ApiMediaTemplate(
+  model: Pick<CustomModel, 'type' | 'modelId'>,
+): OpenAICompatMediaTemplate | null {
+  if (model.type === 'image' && GROK2API_IMAGE_EDIT_MODEL_IDS.has(model.modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/edits',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['image'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          image: '{{images}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'video' && GROK2API_VIDEO_MODEL_IDS.has(model.modelId)) {
+    return {
+      version: 1,
+      mediaType: 'video',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          quality: '{{quality}}',
+          input_reference: '{{image}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.url',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  return null
+}
+
+function getDefaultMediaTemplate(model: Pick<CustomModel, 'type' | 'modelId'>): OpenAICompatMediaTemplate {
+  if (model.type === 'image' && GROK2API_IMAGE_EDIT_MODEL_IDS.has(model.modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/edits',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['image[]'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          'image[]': '{{images}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'image' && GROK2API_IMAGE_GENERATION_MODEL_IDS.has(model.modelId)) {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/generations',
+        contentType: 'application/json',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          size: '{{size}}',
+          response_format: 'url',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'video' && GROK2API_VIDEO_MODEL_IDS.has(model.modelId)) {
+    return {
+      version: 1,
+      mediaType: 'video',
+      mode: 'async',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          resolution_name: '{{resolution}}',
+          preset: 'normal',
+          input_reference: '{{image}}',
+        },
+      },
+      status: {
+        method: 'GET',
+        path: '/videos/{{task_id}}',
+      },
+      content: {
+        method: 'GET',
+        path: '/videos/{{task_id}}/content',
+      },
+      response: {
+        taskIdPath: '$.id',
+        statusPath: '$.status',
+        errorPath: '$.error.message',
+      },
+      polling: {
+        intervalMs: 3000,
+        timeoutMs: 600000,
+        doneStates: ['completed'],
+        failStates: ['failed'],
+      },
+    }
+  }
+
+  return getGenericMediaTemplate(model)
+}
+
+function upgradeCompatMediaTemplate(
+  model: Pick<CustomModel, 'type' | 'modelId'>,
+  template: OpenAICompatMediaTemplate | undefined,
+): OpenAICompatMediaTemplate | undefined {
+  if (!template) return template
+
+  const desiredTemplate = getDefaultMediaTemplate(model)
+  if (areMediaTemplatesEqual(template, desiredTemplate)) {
+    return template
+  }
+
+  const staleCandidates = [
+    getGenericMediaTemplate(model),
+    getLegacyGrok2ApiMediaTemplate(model),
+  ].filter((candidate): candidate is OpenAICompatMediaTemplate => !!candidate)
+
+  return staleCandidates.some((candidate) => areMediaTemplatesEqual(template, candidate))
+    ? desiredTemplate
+    : template
 }
 
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
@@ -326,7 +597,13 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     if (!validated.ok || !validated.template) {
       throw new Error(`MODEL_COMPAT_MEDIA_TEMPLATE_INVALID: models[${index}].compatMediaTemplate`)
     }
-    compatMediaTemplate = validated.template
+    compatMediaTemplate = upgradeCompatMediaTemplate(
+      {
+        type: raw.type,
+        modelId,
+      },
+      validated.template,
+    )
   }
   const compatMediaTemplateCheckedAt = readTrimmedString(raw.compatMediaTemplateCheckedAt) || undefined
   const compatMediaTemplateSourceRaw = readTrimmedString(raw.compatMediaTemplateSource)

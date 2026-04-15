@@ -216,13 +216,36 @@ export default function CharacterCreationForm({
           </div>
 
           {referenceSubMode === 'extract' && (
-            <button
-              onClick={handleExtractDescription}
-              disabled={isExtracting || referenceImagesBase64.length === 0}
-              className="glass-btn-base glass-btn-tone-info w-full px-3 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-            >
-              {isExtracting ? t('aiDesign.generating') : t('character.extractFirst')}
-            </button>
+            <div className="space-y-3">
+              <button
+                onClick={handleExtractDescription}
+                disabled={isExtracting || referenceImagesBase64.length === 0}
+                className="glass-btn-base glass-btn-tone-info w-full px-3 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                {isExtracting
+                  ? t('character.extracting')
+                  : (description.trim() ? t('character.reExtract') : t('character.extractFirst'))}
+              </button>
+
+              <div className="space-y-2">
+                <label className="glass-field-label block">
+                  {t('character.extractedDescription')}
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={5}
+                  placeholder={t('character.descPlaceholder')}
+                  className="glass-textarea-base w-full px-3 py-2 text-sm resize-none"
+                />
+                <p className="text-xs text-[var(--glass-text-secondary)]">
+                  {t('character.textToImageTip')}
+                </p>
+                <p className="text-xs text-[var(--glass-text-tertiary)]">
+                  {t('character.editHint')}
+                </p>
+              </div>
+            </div>
           )}
 
           <CharacterCreationPreview

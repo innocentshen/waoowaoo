@@ -11,6 +11,7 @@ import {
   resolveGrokProviderConfig,
 } from './shared'
 import { getGrokEditInputImageLimitExceededMessage } from './edit-input-limit'
+import { setProxy } from '../../../../lib/prompts/proxy'
 
 export interface GrokImageGenerateParams {
   userId: string
@@ -148,14 +149,23 @@ export async function generateGrokImage(params: GrokImageGenerateParams): Promis
     }))
   }
 
-  const response = await fetch(`${providerConfig.baseUrl}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${providerConfig.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
+  await setProxy()
+
+  const requestUrl = `${providerConfig.baseUrl}${endpoint}`
+  let response: Response
+  try {
+    response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${providerConfig.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`GROK_IMAGE_FETCH_EXCEPTION: POST ${requestUrl} failed: ${message}`)
+  }
 
   const raw = await response.text()
   const payload = parseImageResponse(raw)

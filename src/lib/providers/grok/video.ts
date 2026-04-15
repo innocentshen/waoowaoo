@@ -10,6 +10,7 @@ import {
   readTrimmedString,
   resolveGrokProviderConfig,
 } from './shared'
+import { setProxy } from '../../../../lib/prompts/proxy'
 
 export interface GrokVideoGenerateParams {
   userId: string
@@ -192,14 +193,23 @@ export async function generateGrokVideo(params: GrokVideoGenerateParams): Promis
     endpoint = '/videos/extensions'
   }
 
-  const response = await fetch(`${providerConfig.baseUrl}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${providerConfig.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
+  await setProxy()
+
+  const requestUrl = `${providerConfig.baseUrl}${endpoint}`
+  let response: Response
+  try {
+    response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${providerConfig.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`GROK_VIDEO_FETCH_EXCEPTION: POST ${requestUrl} failed: ${message}`)
+  }
 
   const raw = await response.text()
   const payload = tryParseVideoResponse(raw)

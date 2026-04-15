@@ -146,10 +146,18 @@ export function useCharacterCreationSubmit({
 
       let finalDescription = description.trim()
       if (referenceSubMode === 'extract') {
-        const result = mode === 'asset-hub'
-          ? await extractAssetHubDescription.mutateAsync(referenceImageUrls)
-          : await extractProjectDescription.mutateAsync(referenceImageUrls)
-        finalDescription = result?.description || finalDescription
+        if (!finalDescription) {
+          const result = mode === 'asset-hub'
+            ? await extractAssetHubDescription.mutateAsync(referenceImageUrls)
+            : await extractProjectDescription.mutateAsync(referenceImageUrls)
+          finalDescription = result?.description?.trim() || finalDescription
+          if (finalDescription) {
+            setDescription(finalDescription)
+          }
+        }
+        if (!finalDescription) {
+          throw new Error(t('character.pleaseExtractFirst'))
+        }
       }
 
       if (mode === 'asset-hub') {
@@ -160,7 +168,7 @@ export function useCharacterCreationSubmit({
           artStyle,
           generateFromReference: true,
           referenceImageUrls,
-          customDescription: referenceSubMode === 'extract' ? finalDescription : undefined,
+          customDescription: referenceSubMode === 'extract' ? (finalDescription || undefined) : undefined,
           count: referenceCharacterGenerationCount,
         })
       } else {
@@ -169,7 +177,7 @@ export function useCharacterCreationSubmit({
           description: finalDescription || t('character.defaultDescription', { name: name.trim() }),
           generateFromReference: true,
           referenceImageUrls,
-          customDescription: referenceSubMode === 'extract' ? finalDescription : undefined,
+          customDescription: referenceSubMode === 'extract' ? (finalDescription || undefined) : undefined,
           count: referenceCharacterGenerationCount,
         })
       }
@@ -197,6 +205,7 @@ export function useCharacterCreationSubmit({
     onSuccess,
     referenceImagesBase64.length,
     referenceSubMode,
+    setDescription,
     t,
     uploadReferenceImages,
   ])

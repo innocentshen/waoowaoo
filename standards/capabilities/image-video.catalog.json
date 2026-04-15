@@ -1331,6 +1331,13 @@
     "modelId": "grok-imagine-1.0",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1024x1024",
           "1280x720",
@@ -1347,6 +1354,13 @@
     "modelId": "grok-imagine-1.0-fast",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1024x1024",
           "1280x720",
@@ -1363,6 +1377,13 @@
     "modelId": "grok-imagine-1.0-edit",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1024x1024",
           "1280x720",
@@ -1379,6 +1400,13 @@
     "modelId": "grok-imagine-image-lite",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1024x1024",
           "1280x720",
@@ -1441,6 +1469,13 @@
     "modelId": "grok-imagine-image-edit",
     "capabilities": {
       "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "resolutionOptions": [
           "1024x1024",
           "1280x720",
@@ -1457,6 +1492,13 @@
     "modelId": "grok-imagine-1.0-video",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "generationModeOptions": [
           "normal"
         ],
@@ -1482,6 +1524,13 @@
     "modelId": "grok-imagine-video",
     "capabilities": {
       "video": {
+        "aspectRatioOptions": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9"
+        ],
         "generationModeOptions": [
           "normal"
         ],
