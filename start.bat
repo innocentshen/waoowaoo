@@ -111,11 +111,16 @@ call :wait_for_healthy "waoowaoo-minio" "MinIO"
 if errorlevel 1 goto :fail
 
 echo.
+echo [4.1/6] Releasing Prisma engine file locks ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prepare-prisma-generate.ps1" -RepoRoot "%CD%"
+if errorlevel 1 goto :fail
+
+echo.
 echo [5/6] Initializing database schema ...
 if "%ACCEPT_DATA_LOSS%"=="1" (
-  call npx prisma db push --accept-data-loss
+  call npx prisma db push --accept-data-loss --skip-generate
 ) else (
-  call npx prisma db push
+  call npx prisma db push --skip-generate
 )
 if errorlevel 1 (
   if "%ACCEPT_DATA_LOSS%"=="0" (
