@@ -27,6 +27,22 @@ const runOpenAICompatResponsesCompletionMock = vi.hoisted(() =>
   })),
 )
 
+const runOpenAICompatResponsesCompletionStreamMock = vi.hoisted(() =>
+  vi.fn(async (_input, callbacks) => {
+    callbacks?.onStage?.({ stage: 'streaming', provider: 'openai-compat' })
+    callbacks?.onChunk?.({ kind: 'text', delta: 'responses-stream', seq: 1, lane: 'main' })
+    callbacks?.onComplete?.('responses-stream')
+    return {
+      id: 'chatcmpl_responses_stream_1',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-4.1-mini',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'responses-stream' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }
+  }),
+)
+
 const runOpenAICompatChatCompletionMock = vi.hoisted(() =>
   vi.fn(async () => ({
     id: 'chatcmpl_chat_1',
@@ -36,6 +52,22 @@ const runOpenAICompatChatCompletionMock = vi.hoisted(() =>
     choices: [{ index: 0, message: { role: 'assistant', content: 'chat-stream' }, finish_reason: 'stop' }],
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
   })),
+)
+
+const runOpenAICompatChatCompletionStreamMock = vi.hoisted(() =>
+  vi.fn(async (_input, callbacks) => {
+    callbacks?.onStage?.({ stage: 'streaming', provider: 'openai-compat' })
+    callbacks?.onChunk?.({ kind: 'text', delta: 'chat-stream', seq: 1, lane: 'main' })
+    callbacks?.onComplete?.('chat-stream')
+    return {
+      id: 'chatcmpl_chat_stream_1',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-4.1-mini',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'chat-stream' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }
+  }),
 )
 
 const getProviderConfigMock = vi.hoisted(() =>
@@ -56,7 +88,9 @@ const recordCompletionUsageMock = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/model-gateway', () => ({
   resolveModelGatewayRoute: vi.fn(() => 'openai-compat'),
   runOpenAICompatChatCompletion: runOpenAICompatChatCompletionMock,
+  runOpenAICompatChatCompletionStream: runOpenAICompatChatCompletionStreamMock,
   runOpenAICompatResponsesCompletion: runOpenAICompatResponsesCompletionMock,
+  runOpenAICompatResponsesCompletionStream: runOpenAICompatResponsesCompletionStreamMock,
 }))
 
 vi.mock('@/lib/api-config', () => ({
@@ -105,16 +139,17 @@ describe('llm chatCompletionStream openai-compatible protocol routing', () => {
       { onChunk },
     )
 
-    expect(runOpenAICompatResponsesCompletionMock).toHaveBeenCalledTimes(1)
-    expect(runOpenAICompatResponsesCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runOpenAICompatResponsesCompletionStreamMock).toHaveBeenCalledTimes(1)
+    expect(runOpenAICompatResponsesCompletionStreamMock).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       providerId: 'openai-compatible:node-1',
       modelId: 'gpt-4.1-mini',
       temperature: 0.2,
       reasoning: true,
       reasoningEffort: 'high',
-    }))
+    }), expect.any(Object), undefined)
     expect(runOpenAICompatChatCompletionMock).not.toHaveBeenCalled()
+    expect(runOpenAICompatResponsesCompletionMock).not.toHaveBeenCalled()
     expect(completion.choices[0]?.message?.content).toBe('responses-stream')
     expect(onChunk).toHaveBeenCalled()
   })
@@ -135,15 +170,16 @@ describe('llm chatCompletionStream openai-compatible protocol routing', () => {
       undefined,
     )
 
-    expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledTimes(1)
-    expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runOpenAICompatChatCompletionStreamMock).toHaveBeenCalledTimes(1)
+    expect(runOpenAICompatChatCompletionStreamMock).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       providerId: 'openai-compatible:node-1',
       modelId: 'gpt-4.1-mini',
       temperature: 0.2,
       reasoning: true,
       reasoningEffort: 'high',
-    }))
+    }), undefined, undefined)
+    expect(runOpenAICompatChatCompletionMock).not.toHaveBeenCalled()
     expect(runOpenAICompatResponsesCompletionMock).not.toHaveBeenCalled()
     expect(completion.choices[0]?.message?.content).toBe('chat-stream')
   })
@@ -164,12 +200,12 @@ describe('llm chatCompletionStream openai-compatible protocol routing', () => {
       undefined,
     )
 
-    expect(runOpenAICompatChatCompletionMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runOpenAICompatChatCompletionStreamMock).toHaveBeenCalledWith(expect.objectContaining({
       modelId: 'gpt-5.4',
       temperature: 0.2,
       reasoning: true,
       reasoningEffort: 'xhigh',
-    }))
+    }), undefined, undefined)
   })
 
   it('fails fast when llmProtocol is missing for openai-compatible model', async () => {

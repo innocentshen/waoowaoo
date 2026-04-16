@@ -1,10 +1,11 @@
 import OpenAI from 'openai'
 import type { ChatCompletionStreamCallbacks } from '@/lib/llm/types'
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
-import { extractStreamDeltaParts, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
+import { buildReasoningAwareContent, extractStreamDeltaParts, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
 import { withStreamChunkTimeout } from '@/lib/llm/stream-timeout'
 import { emitStreamChunk, emitStreamStage, resolveStreamStepMeta } from '@/lib/llm/stream-helpers'
 import { isLikelyOpenAIReasoningModel } from '@/lib/llm/reasoning-capability'
+import type { InternalLLMStreamStepMeta } from '@/lib/llm-observe/internal-stream-context'
 import type { OpenAICompatChatRequest } from '../types'
 import { createOpenAICompatClient, resolveOpenAICompatClientConfig } from './common'
 
@@ -33,13 +34,14 @@ type OpenAIStreamWithFinal = AsyncIterable<unknown> & {
 export async function runOpenAICompatChatCompletionStream(
   input: OpenAICompatChatRequest,
   callbacks?: ChatCompletionStreamCallbacks,
+  stepMeta?: InternalLLMStreamStepMeta,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
   const client = createOpenAICompatClient(config)
-  const stepMeta = resolveStreamStepMeta({})
+  const resolvedStepMeta = stepMeta || resolveStreamStepMeta({})
   const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
 
-  emitStreamStage(callbacks, stepMeta, 'streaming', 'openai-compat')
+  emitStreamStage(callbacks, resolvedStepMeta, 'streaming', 'openai-compat')
   const request: Record<string, unknown> = {
     model: input.modelId,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -63,7 +65,7 @@ export async function runOpenAICompatChatCompletionStream(
     const { textDelta, reasoningDelta } = extractStreamDeltaParts(part)
     if (reasoningDelta) {
       reasoning += reasoningDelta
-      emitStreamChunk(callbacks, stepMeta, {
+      emitStreamChunk(callbacks, resolvedStepMeta, {
         kind: 'reasoning',
         delta: reasoningDelta,
         seq,
@@ -73,7 +75,7 @@ export async function runOpenAICompatChatCompletionStream(
     }
     if (textDelta) {
       text += textDelta
-      emitStreamChunk(callbacks, stepMeta, {
+      emitStreamChunk(callbacks, resolvedStepMeta, {
         kind: 'text',
         delta: textDelta,
         seq,
@@ -94,11 +96,11 @@ export async function runOpenAICompatChatCompletionStream(
 
   const completion = finalCompletion || buildOpenAIChatCompletion(
     input.modelId,
-    text || reasoning,
+    buildReasoningAwareContent(text, reasoning),
     undefined,
   )
 
-  emitStreamStage(callbacks, stepMeta, 'completed', 'openai-compat')
-  callbacks?.onComplete?.(text, stepMeta)
+  emitStreamStage(callbacks, resolvedStepMeta, 'completed', 'openai-compat')
+  callbacks?.onComplete?.(text, resolvedStepMeta)
   return completion
 }

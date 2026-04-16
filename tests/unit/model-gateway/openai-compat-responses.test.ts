@@ -8,11 +8,34 @@ const resolveOpenAICompatClientConfigMock = vi.hoisted(() =>
   })),
 )
 
+const responsesStreamMock = vi.hoisted(() => vi.fn())
+const createOpenAICompatClientMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    responses: {
+      stream: responsesStreamMock,
+    },
+  })),
+)
+
+function createAsyncIterable<T>(values: T[]): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const value of values) {
+        yield value
+      }
+    },
+  }
+}
+
 vi.mock('@/lib/model-gateway/openai-compat/common', () => ({
+  createOpenAICompatClient: createOpenAICompatClientMock,
   resolveOpenAICompatClientConfig: resolveOpenAICompatClientConfigMock,
 }))
 
-import { runOpenAICompatResponsesCompletion } from '@/lib/model-gateway/openai-compat/responses'
+import {
+  runOpenAICompatResponsesCompletion,
+  runOpenAICompatResponsesCompletionStream,
+} from '@/lib/model-gateway/openai-compat/responses'
 
 describe('model-gateway openai-compat responses executor', () => {
   beforeEach(() => {
@@ -90,5 +113,57 @@ describe('model-gateway openai-compat responses executor', () => {
         temperature: 0.2,
       }),
     ).rejects.toThrow('OPENAI_COMPAT_RESPONSES_FAILED: 404')
+  })
+
+  it('streams responses deltas from the upstream provider', async () => {
+    const finalResponse = {
+      output: [
+        { type: 'reasoning', text: 'think-' },
+        { type: 'output_text', text: 'hello' },
+      ],
+      usage: {
+        input_tokens: 9,
+        output_tokens: 4,
+      },
+    }
+    const finalResponseMock = vi.fn(async () => finalResponse)
+    responsesStreamMock.mockReturnValueOnce({
+      ...createAsyncIterable([
+        { type: 'response.reasoning_text.delta', delta: 'think-' },
+        { type: 'response.output_text.delta', delta: 'he' },
+        { type: 'response.output_text.delta', delta: 'llo' },
+      ]),
+      finalResponse: finalResponseMock,
+    })
+
+    const onStage = vi.fn()
+    const onChunk = vi.fn()
+    const onComplete = vi.fn()
+    const completion = await runOpenAICompatResponsesCompletionStream(
+      {
+        userId: 'user-1',
+        providerId: 'openai-compatible:node-1',
+        modelId: 'gpt-4.1-mini',
+        messages: [{ role: 'user', content: 'hello' }],
+        temperature: 0.2,
+      },
+      { onStage, onChunk, onComplete },
+    )
+
+    const request = responsesStreamMock.mock.calls.at(0)?.at(0) as Record<string, unknown> | undefined
+    expect(request?.model).toBe('gpt-4.1-mini')
+    expect(onChunk).toHaveBeenNthCalledWith(1, expect.objectContaining({ kind: 'reasoning', delta: 'think-', seq: 1 }))
+    expect(onChunk).toHaveBeenNthCalledWith(2, expect.objectContaining({ kind: 'text', delta: 'he', seq: 2 }))
+    expect(onChunk).toHaveBeenNthCalledWith(3, expect.objectContaining({ kind: 'text', delta: 'llo', seq: 3 }))
+    expect(onStage).toHaveBeenNthCalledWith(1, expect.objectContaining({ stage: 'streaming' }))
+    expect(onStage).toHaveBeenNthCalledWith(2, expect.objectContaining({ stage: 'completed' }))
+    expect(onComplete).toHaveBeenCalledWith('hello', undefined)
+    expect(finalResponseMock).toHaveBeenCalledTimes(1)
+    expect(completion.choices[0]?.message?.content).toEqual([
+      { type: 'reasoning', text: 'think-' },
+      { type: 'text', text: 'hello' },
+    ])
+    expect(completion.usage?.prompt_tokens).toBe(9)
+    expect(completion.usage?.completion_tokens).toBe(4)
   })
 })

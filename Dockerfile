@@ -1,10 +1,17 @@
+# syntax=docker/dockerfile:1.7
 # ==================== Stage 1: Dependencies ====================
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+ARG NPM_CONFIG_REPLACE_REGISTRY_HOST=always
+
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    NPM_CONFIG_REGISTRY="$NPM_CONFIG_REGISTRY" \
+    NPM_CONFIG_REPLACE_REGISTRY_HOST="$NPM_CONFIG_REPLACE_REGISTRY_HOST" \
+    npm ci --prefer-offline
 
 # ==================== Stage 2: Build ====================
 FROM node:20-alpine AS builder

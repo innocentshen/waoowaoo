@@ -84,6 +84,8 @@ export function extractStreamDeltaParts(part: unknown): { textDelta: string; rea
     const partObject =
         typeof part === 'object' && part !== null
             ? (part as {
+                type?: string
+                delta?: unknown
                 choices?: Array<{ delta?: Record<string, unknown> }>
                 response?: {
                     output_text?: { delta?: unknown }
@@ -91,6 +93,20 @@ export function extractStreamDeltaParts(part: unknown): { textDelta: string; rea
                 }
             })
             : {}
+    const eventType = typeof partObject.type === 'string' ? partObject.type : ''
+    const eventDelta = collectTextValue(partObject.delta)
+    if (eventType === 'response.output_text.delta') {
+        return {
+            textDelta: eventDelta,
+            reasoningDelta: '',
+        }
+    }
+    if (eventType === 'response.reasoning_text.delta' || eventType === 'response.reasoning_summary_text.delta') {
+        return {
+            textDelta: '',
+            reasoningDelta: eventDelta,
+        }
+    }
     const delta = partObject.choices?.[0]?.delta || {}
     const contentParts = extractCompletionPartsFromContent(delta.content)
     const responseDelta = partObject.response?.output_text?.delta || ''

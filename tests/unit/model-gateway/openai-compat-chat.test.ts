@@ -29,12 +29,22 @@ const resolveOpenAICompatClientConfigMock = vi.hoisted(() =>
   })),
 )
 
+function createAsyncIterable<T>(values: T[]): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const value of values) {
+        yield value
+      }
+    },
+  }
+}
+
 vi.mock('@/lib/model-gateway/openai-compat/common', () => ({
   createOpenAICompatClient: createOpenAICompatClientMock,
   resolveOpenAICompatClientConfig: resolveOpenAICompatClientConfigMock,
 }))
 
-import { runOpenAICompatChatCompletion } from '@/lib/model-gateway/openai-compat/chat'
+import { runOpenAICompatChatCompletion, runOpenAICompatChatCompletionStream } from '@/lib/model-gateway/openai-compat/chat'
 
 describe('model-gateway openai-compat chat executor', () => {
   beforeEach(() => {
@@ -71,5 +81,48 @@ describe('model-gateway openai-compat chat executor', () => {
     const request = createMock.mock.calls.at(0)?.at(0) as Record<string, unknown> | undefined
     expect(request?.temperature).toBe(0.2)
     expect(request).not.toHaveProperty('reasoning_effort')
+  })
+
+  it('streams chat-completions deltas from the upstream provider', async () => {
+    const finalCompletion = {
+      id: 'chatcmpl_stream_final',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-4.1-mini',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+    }
+    const finalChatCompletion = vi.fn(async () => finalCompletion)
+    createMock.mockResolvedValueOnce(({
+      ...createAsyncIterable([
+        { choices: [{ delta: { content: 'he' } }] },
+        { choices: [{ delta: { content: 'llo' } }] },
+      ]),
+      finalChatCompletion,
+    }) as never)
+
+    const onStage = vi.fn()
+    const onChunk = vi.fn()
+    const onComplete = vi.fn()
+    const completion = await runOpenAICompatChatCompletionStream(
+      {
+        userId: 'user-1',
+        providerId: 'openai-compatible:node-1',
+        modelId: 'gpt-4.1-mini',
+        messages: [{ role: 'user', content: 'hello' }],
+        temperature: 0.2,
+      },
+      { onStage, onChunk, onComplete },
+    )
+
+    const request = createMock.mock.calls.at(0)?.at(0) as Record<string, unknown> | undefined
+    expect(request?.stream).toBe(true)
+    expect(onChunk).toHaveBeenNthCalledWith(1, expect.objectContaining({ kind: 'text', delta: 'he', seq: 1 }))
+    expect(onChunk).toHaveBeenNthCalledWith(2, expect.objectContaining({ kind: 'text', delta: 'llo', seq: 2 }))
+    expect(onStage).toHaveBeenNthCalledWith(1, expect.objectContaining({ stage: 'streaming' }))
+    expect(onStage).toHaveBeenNthCalledWith(2, expect.objectContaining({ stage: 'completed' }))
+    expect(onComplete).toHaveBeenCalledWith('hello', undefined)
+    expect(finalChatCompletion).toHaveBeenCalledTimes(1)
+    expect(completion).toEqual(finalCompletion)
   })
 })

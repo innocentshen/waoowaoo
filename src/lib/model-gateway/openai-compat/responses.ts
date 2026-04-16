@@ -1,8 +1,12 @@
+import type { ChatCompletionStreamCallbacks } from '@/lib/llm/types'
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
-import { buildReasoningAwareContent, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
+import { buildReasoningAwareContent, extractStreamDeltaParts, mapOpenAICompatReasoningEffort } from '@/lib/llm/utils'
 import { isLikelyOpenAIReasoningModel } from '@/lib/llm/reasoning-capability'
+import { emitStreamChunk, emitStreamStage, resolveStreamStepMeta } from '@/lib/llm/stream-helpers'
+import { withStreamChunkTimeout } from '@/lib/llm/stream-timeout'
+import type { InternalLLMStreamStepMeta } from '@/lib/llm-observe/internal-stream-context'
 import type { OpenAICompatChatRequest } from '../types'
-import { resolveOpenAICompatClientConfig } from './common'
+import { createOpenAICompatClient, resolveOpenAICompatClientConfig } from './common'
 
 type ResponsesUsage = {
   promptTokens: number
@@ -11,12 +15,47 @@ type ResponsesUsage = {
 
 type ErrorWithStatus = Error & { status?: number }
 
+type OpenAICompatResponsesStream = AsyncIterable<unknown> & {
+  finalResponse?: () => Promise<unknown>
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
 
 function toEndpoint(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+function buildResponsesBody(input: OpenAICompatChatRequest): Record<string, unknown> {
+  const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
+  const body: Record<string, unknown> = {
+    model: input.modelId,
+    input: input.messages.map((message) => ({
+      role: message.role,
+      content: [{ type: 'input_text', text: message.content }],
+    })),
+  }
+  if (useReasoningControls) {
+    body.reasoning = {
+      effort: mapOpenAICompatReasoningEffort(input.reasoningEffort),
+    }
+  } else {
+    body.temperature = input.temperature
+  }
+  return body
+}
+
+function readResponsesFailureMessage(payload: unknown): string {
+  const root = asRecord(payload)
+  const error = asRecord(root?.error)
+  if (error && typeof error.message === 'string' && error.message.trim()) {
+    return `OPENAI_COMPAT_RESPONSES_FAILED: ${error.message.trim()}`
+  }
+  if (typeof root?.status === 'string' && root.status.trim()) {
+    return `OPENAI_COMPAT_RESPONSES_FAILED: status=${root.status.trim()}`
+  }
+  return 'OPENAI_COMPAT_RESPONSES_FAILED'
 }
 
 function collectText(node: unknown, acc: string[]) {
@@ -98,21 +137,7 @@ function extractResponsesUsage(payload: unknown): ResponsesUsage {
 export async function runOpenAICompatResponsesCompletion(input: OpenAICompatChatRequest) {
   const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
   const endpoint = toEndpoint(config.baseUrl, '/responses')
-  const useReasoningControls = input.reasoning !== false && isLikelyOpenAIReasoningModel(input.modelId)
-  const body: Record<string, unknown> = {
-    model: input.modelId,
-    input: input.messages.map((message) => ({
-      role: message.role,
-      content: [{ type: 'input_text', text: message.content }],
-    })),
-  }
-  if (useReasoningControls) {
-    body.reasoning = {
-      effort: mapOpenAICompatReasoningEffort(input.reasoningEffort),
-    }
-  } else {
-    body.temperature = input.temperature
-  }
+  const body = buildResponsesBody(input)
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -141,5 +166,79 @@ export async function runOpenAICompatResponsesCompletion(input: OpenAICompatChat
     buildReasoningAwareContent(text, reasoning),
     usage,
   )
+}
+
+export async function runOpenAICompatResponsesCompletionStream(
+  input: OpenAICompatChatRequest,
+  callbacks?: ChatCompletionStreamCallbacks,
+  stepMeta?: InternalLLMStreamStepMeta,
+) {
+  const config = await resolveOpenAICompatClientConfig(input.userId, input.providerId)
+  const client = createOpenAICompatClient(config)
+  const resolvedStepMeta = stepMeta || resolveStreamStepMeta({})
+  const body = buildResponsesBody(input)
+
+  emitStreamStage(callbacks, resolvedStepMeta, 'streaming', 'openai-compat')
+  const stream = client.responses.stream(body) as OpenAICompatResponsesStream
+
+  let seq = 1
+  let text = ''
+  let reasoning = ''
+
+  for await (const event of withStreamChunkTimeout(stream)) {
+    const eventRecord = asRecord(event)
+    const eventType = typeof eventRecord?.type === 'string' ? eventRecord.type : ''
+    if (eventType === 'error') {
+      const message = typeof eventRecord?.message === 'string' ? eventRecord.message.trim() : ''
+      throw new Error(`OPENAI_COMPAT_RESPONSES_FAILED: ${message || 'unknown stream error'}`)
+    }
+    if (eventType === 'response.failed') {
+      throw new Error(readResponsesFailureMessage(eventRecord?.response ?? event))
+    }
+
+    const { textDelta, reasoningDelta } = extractStreamDeltaParts(event)
+    if (reasoningDelta) {
+      reasoning += reasoningDelta
+      emitStreamChunk(callbacks, resolvedStepMeta, {
+        kind: 'reasoning',
+        delta: reasoningDelta,
+        seq,
+        lane: 'reasoning',
+      })
+      seq += 1
+    }
+    if (textDelta) {
+      text += textDelta
+      emitStreamChunk(callbacks, resolvedStepMeta, {
+        kind: 'text',
+        delta: textDelta,
+        seq,
+        lane: 'main',
+      })
+      seq += 1
+    }
+  }
+
+  let finalPayload: unknown = null
+  if (typeof stream.finalResponse === 'function') {
+    try {
+      finalPayload = await stream.finalResponse()
+    } catch {
+      finalPayload = null
+    }
+  }
+
+  const finalText = extractResponsesText(finalPayload) || text
+  const finalReasoning = extractResponsesReasoning(finalPayload) || reasoning
+  const usage = extractResponsesUsage(finalPayload)
+  const completion = buildOpenAIChatCompletion(
+    input.modelId,
+    buildReasoningAwareContent(finalText, finalReasoning),
+    usage,
+  )
+
+  emitStreamStage(callbacks, resolvedStepMeta, 'completed', 'openai-compat')
+  callbacks?.onComplete?.(finalText, resolvedStepMeta)
+  return completion
 }
 
