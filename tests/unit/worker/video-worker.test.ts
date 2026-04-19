@@ -39,6 +39,9 @@ const utilsMock = vi.hoisted(() => ({
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
   uploadVideoSourceToCos: vi.fn(async () => 'cos/lip-sync/video.mp4'),
 }))
+const mediaMock = vi.hoisted(() => ({
+  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
+}))
 const configServiceMock = vi.hoisted(() => ({
   getUserWorkflowConcurrencyConfig: vi.fn(async () => ({
     analysis: 5,
@@ -129,16 +132,14 @@ vi.mock('@/lib/workers/shared', () => ({
 }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/media/outbound-image', () => ({
-  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
-}))
+vi.mock('@/lib/media/outbound-image', () => mediaMock)
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
 vi.mock('@/lib/model-config-contract', () => ({
   parseModelKeyStrict: vi.fn((value: string) => {
-    const [provider = 'fal'] = value.split('::')
-    return { provider }
+    const [provider = 'fal', modelId = 'unknown-model'] = value.split('::')
+    return { provider, modelId, modelKey: value }
   }),
 }))
 vi.mock('@/lib/api-config', () => ({
@@ -200,6 +201,7 @@ describe('worker video processor behavior', () => {
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
     })
+    mediaMock.normalizeToBase64ForGeneration.mockImplementation(async (input: string) => input)
 
     const mod = await import('@/lib/workers/video.worker')
     mod.createVideoWorker()
@@ -506,7 +508,7 @@ describe('worker video processor behavior', () => {
     expect(generationCall?.options?.prompt).not.toContain('weathered bronze blade with a leather-wrapped hilt')
   })
 
-  it('switches official grok related-asset generation into reference-to-video mode', async () => {
+  it('keeps official grok related-asset generation on panel-image input and moves extra refs into prompt constraints', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -570,12 +572,8 @@ describe('worker video processor behavior', () => {
       }
       | undefined
 
-    expect(generationCall?.imageUrl).toBeUndefined()
-    expect(generationCall?.referenceImages).toEqual([
-      'https://signed.example/cos/panel-image.png',
-      'https://signed.example/cos/hero-reference.png',
-      'https://signed.example/cos/location-reference.png',
-    ])
+    expect(generationCall?.imageUrl).toBe('https://signed.example/cos/panel-image.png')
+    expect(generationCall?.referenceImages).toBeUndefined()
     expect(generationCall?.options?.generationMode).toBe('normal')
     expect(generationCall?.options?.prompt).toContain('Character references:')
     expect(generationCall?.options?.prompt).toContain('Location references:')
@@ -710,14 +708,23 @@ describe('worker video processor behavior', () => {
     }>>).at(-1)?.[0]
     const candidates = JSON.parse(String(updateArgs?.data?.videoCandidates)) as Array<{
       generationMode: string
-      meta?: { sourceCandidateId?: string | null; sourceGenerationMode?: string | null }
+      meta?: {
+        sourceCandidateId?: string | null
+        sourceGenerationMode?: string | null
+        referenceHandling?: string | null
+        requestedReferenceImageCount?: number | null
+        sentReferenceImageCount?: number | null
+      }
     }>
     expect(candidates.at(-1)).toEqual(expect.objectContaining({
       generationMode: 'edit',
-      meta: {
+      meta: expect.objectContaining({
         sourceCandidateId: 'source',
         sourceGenerationMode: 'normal',
-      },
+        referenceHandling: 'prompt_only_provider_constraint',
+        requestedReferenceImageCount: 1,
+        sentReferenceImageCount: 0,
+      }),
     }))
   })
 
@@ -828,5 +835,272 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(unsupportedJob)).rejects.toThrow('Unsupported video task type')
+  })
+
+  it('keeps official grok normal generation in image-to-video mode even when references are selected', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default', slot: 'center' },
+        ]),
+        location: JSON.stringify(['Safe House']),
+        props: JSON.stringify(['Ancient Sword']),
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [
+        {
+          name: 'Safe House',
+          images: [
+            {
+              isSelected: true,
+              description: 'industrial loft with rain-streaked windows',
+              imageUrl: 'cos/location-reference.png',
+            },
+          ],
+        },
+      ],
+      props: [
+        {
+          name: 'Ancient Sword',
+          summary: 'weathered bronze blade',
+          images: [
+            {
+              isSelected: true,
+              description: 'weathered bronze blade with a leather-wrapped hilt',
+              imageUrl: 'cos/prop-reference.png',
+            },
+          ],
+        },
+      ],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'grok::grok-imagine-video',
+        referenceSelection: {
+          includeCharacters: true,
+          includeLocation: true,
+          includeProps: true,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls.at(-1)?.[1] as
+      | {
+        imageUrl?: string
+        referenceImages?: string[]
+        options?: { prompt?: string; aspectRatio?: string; generationMode?: string }
+      }
+      | undefined
+    expect(generationCall?.imageUrl).toBe('https://signed.example/cos/panel-image.png')
+    expect(generationCall?.referenceImages).toBeUndefined()
+    expect(generationCall?.options?.prompt).toContain('Reference consistency constraints:')
+    expect(generationCall?.options?.aspectRatio).toBe('16:9')
+    expect(generationCall?.options?.generationMode).toBe('normal')
+
+    const latestUpdateCall = prismaMock.novelPromotionPanel.updateMany.mock.calls.at(-1) as Array<{
+      data?: {
+        videoCandidates?: string | null
+      }
+    }> | undefined
+    const persistedPayload = latestUpdateCall?.[0]?.data
+    const parsedCandidates = persistedPayload?.videoCandidates ? JSON.parse(persistedPayload.videoCandidates) : []
+    const latestCandidate = parsedCandidates.at(-1)
+    expect(latestCandidate?.meta).toEqual(expect.objectContaining({
+      referenceHandling: 'prompt_only_provider_constraint',
+      requestedReferenceImageCount: 3,
+      sentReferenceImageCount: 0,
+    }))
+  })
+
+  it('keeps grok2api normal generation in single-input image-to-video mode even when references are selected', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default', slot: 'center' },
+        ]),
+        location: JSON.stringify(['Safe House']),
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/hero-reference.png']),
+              imageUrl: 'cos/hero-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [
+        {
+          name: 'Safe House',
+          images: [
+            {
+              isSelected: true,
+              description: 'industrial loft with rain-streaked windows',
+              imageUrl: 'cos/location-reference.png',
+            },
+          ],
+        },
+      ],
+      props: [],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::grok-imagine-video',
+        referenceSelection: {
+          includeCharacters: true,
+          includeLocation: true,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls.at(-1)?.[1] as
+      | {
+        imageUrl?: string
+        referenceImages?: string[]
+        options?: { prompt?: string; aspectRatio?: string; generationMode?: string }
+      }
+      | undefined
+    expect(generationCall?.imageUrl).toBe('https://signed.example/cos/panel-image.png')
+    expect(generationCall?.referenceImages).toBeUndefined()
+    expect(generationCall?.options?.prompt).toContain('Reference consistency constraints:')
+    expect(generationCall?.options?.aspectRatio).toBe('16:9')
+    expect(generationCall?.options?.generationMode).toBe('normal')
+
+    const latestUpdateCall = prismaMock.novelPromotionPanel.updateMany.mock.calls.at(-1) as Array<{
+      data?: {
+        videoCandidates?: string | null
+      }
+    }> | undefined
+    const persistedPayload = latestUpdateCall?.[0]?.data
+    const parsedCandidates = persistedPayload?.videoCandidates ? JSON.parse(persistedPayload.videoCandidates) : []
+    const latestCandidate = parsedCandidates.at(-1)
+    expect(latestCandidate?.meta).toEqual(expect.objectContaining({
+      referenceHandling: 'prompt_only_provider_single_input',
+      requestedReferenceImageCount: 2,
+      sentReferenceImageCount: 0,
+    }))
+  })
+
+  it('rejects grok2api video edit requests with an explicit provider capability error', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::grok-imagine-video',
+        videoOperation: {
+          mode: 'edit',
+          sourceCandidateId: 'source',
+          instruction: 'make the camera drift left',
+        },
+      },
+    })
+
+    await expect(processor!(job)).rejects.toThrow('GROK2API_VIDEO_OPERATION_UNSUPPORTED: edit')
+    expect(utilsMock.resolveVideoSourceFromGeneration).not.toHaveBeenCalled()
+  })
+
+  it('tracks failed reference normalization counts in candidate metadata', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([
+          { name: 'Hero', appearance: 'default', slot: 'center' },
+        ]),
+      }),
+    )
+    imageTaskSharedMock.resolveNovelData.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          appearances: [
+            {
+              changeReason: 'default',
+              descriptions: JSON.stringify(['black coat, calm expression']),
+              selectedIndex: 0,
+              description: null,
+              imageUrls: JSON.stringify(['cos/bad-reference.png']),
+              imageUrl: 'cos/bad-reference.png',
+            },
+          ],
+        },
+      ],
+      locations: [],
+      props: [],
+    })
+    mediaMock.normalizeToBase64ForGeneration.mockImplementation(async (input: string) => {
+      if (input === 'https://signed.example/cos/bad-reference.png') {
+        throw new Error('normalize failed')
+      }
+      return input
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'grok::grok-imagine-video',
+        referenceSelection: {
+          includeCharacters: true,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const latestUpdateCall = prismaMock.novelPromotionPanel.updateMany.mock.calls.at(-1) as Array<{
+      data?: {
+        videoCandidates?: string | null
+      }
+    }> | undefined
+    const persistedPayload = latestUpdateCall?.[0]?.data
+    const parsedCandidates = persistedPayload?.videoCandidates ? JSON.parse(persistedPayload.videoCandidates) : []
+    const latestCandidate = parsedCandidates.at(-1)
+    expect(latestCandidate?.meta).toEqual(expect.objectContaining({
+      referenceHandling: 'prompt_only_reference_unavailable',
+      requestedReferenceImageCount: 1,
+      sentReferenceImageCount: 0,
+      failedReferenceImageCount: 1,
+    }))
   })
 })

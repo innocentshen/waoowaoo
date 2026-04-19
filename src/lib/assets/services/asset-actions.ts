@@ -1103,13 +1103,37 @@ async function updateGlobalAssetVariant(input: AssetVariantUpdateInput) {
     })
     return { success: true }
   }
+  if (input.kind === 'location') {
+    const trimmedDescription = normalizeString(input.body.description)
+    if (!trimmedDescription) throw new ApiError('INVALID_PARAMS')
+    const data: Record<string, unknown> = {
+      description: removeLocationPromptSuffix(trimmedDescription),
+    }
+    if (input.body.availableSlots !== undefined) {
+      data.availableSlots = stringifyLocationAvailableSlots(
+        normalizeLocationAvailableSlots(input.body.availableSlots),
+      )
+    }
+    const image = await prisma.globalLocationImage.update({
+      where: { id: input.variantId },
+      data,
+    })
+    return { success: true, image }
+  }
   if (input.kind === 'prop') {
     const trimmedDescription = normalizeString(input.body.description)
     if (!trimmedDescription) throw new ApiError('INVALID_PARAMS')
-    const cleanDescription = removePropPromptSuffix(trimmedDescription)
+    const data: Record<string, unknown> = {
+      description: removePropPromptSuffix(trimmedDescription),
+    }
+    if (input.body.availableSlots !== undefined) {
+      data.availableSlots = stringifyLocationAvailableSlots(
+        normalizeLocationAvailableSlots(input.body.availableSlots),
+      )
+    }
     const image = await prisma.globalLocationImage.update({
       where: { id: input.variantId },
-      data: { description: cleanDescription },
+      data,
     })
     return { success: true, image }
   }

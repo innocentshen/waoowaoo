@@ -58,11 +58,11 @@ interface LocationCardProps {
 
 export function LocationCard({ location, assetType = 'location', onImageClick, onImageEdit, onEdit }: LocationCardProps) {
   // 🔥 使用 mutation hooks
-  const generateImage = useGenerateLocationImage()
-  const selectImage = useSelectLocationImage()
-  const undoImage = useUndoLocationImage()
+  const generateImage = useGenerateLocationImage(assetType)
+  const selectImage = useSelectLocationImage(assetType)
+  const undoImage = useUndoLocationImage(assetType)
   const uploadImage = useUploadLocationImage()
-  const deleteLocation = useDeleteLocation()
+  const deleteLocation = useDeleteLocation(assetType)
 
   const t = useTranslations('assetHub')
   const tAssets = useTranslations('assets')

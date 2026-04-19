@@ -33,6 +33,15 @@ const panelSharedMock = vi.hoisted(() => ({
     { name: 'Hero', appearance: 'steady stance', slot: 'center' },
   ]),
   parseJsonStringArray: vi.fn(() => ['Countdown Phone']),
+  parseNamedReferenceList: vi.fn((value: string | null | undefined) => {
+    if (!value) return []
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return value.split(',').map((item) => item.trim()).filter(Boolean)
+    }
+  }),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -276,6 +285,54 @@ describe('worker shot-ai-video-prompt behavior', () => {
         next_panel_location: '@Exit Corridor',
         next_panel_props: '@Metal Door',
         next_panel_dialogue_lines: '- Guard: \"You are not leaving.\"',
+      }),
+    }))
+  })
+
+  it('parses structured location lists before building asset context', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce({
+      id: 'panel-1',
+      panelIndex: 0,
+      shotType: 'medium',
+      cameraMove: 'push',
+      description: 'A tense beat before action.',
+      location: JSON.stringify(['Safe House', 'Back Alley']),
+      characters: '[]',
+      props: '[]',
+      srtSegment: 'He checks the countdown.',
+      duration: 4,
+      imagePrompt: '@Hero holding @Countdown Phone',
+      videoPrompt: 'old video prompt',
+      storyboard: {
+        clip: {
+          content: 'Full story text',
+          summary: 'Clip summary',
+        },
+        episode: {
+          novelPromotionProject: {
+            projectId: 'project-1',
+          },
+        },
+      },
+    })
+
+    const payload = {
+      panelId: 'panel-1',
+      currentPrompt: '@Hero still image prompt',
+      currentVideoPrompt: 'old video prompt',
+      modifyInstruction: 'make the timing clearer',
+      mode: 'videoPrompt',
+    }
+    const job = buildJob(payload)
+
+    await handleGeneratePanelVideoPromptTask(job, payload)
+
+    expect(assetContextMock.buildPromptAssetContext).toHaveBeenCalledWith(expect.objectContaining({
+      clipLocation: 'Safe House',
+    }))
+    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        panel_location: '@Safe House、@Back Alley',
       }),
     }))
   })

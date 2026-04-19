@@ -7,6 +7,7 @@ import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { getUserWorkflowConcurrencyConfig } from '@/lib/config-service'
 import { reportTaskProgress, withTaskLifecycle } from './shared'
 import { withUserConcurrencyGate } from './user-concurrency-gate'
+import { createScopedLogger } from '@/lib/logging/core'
 import {
   assertTaskActive,
   getProjectModels,
@@ -48,10 +49,32 @@ type VideoReferenceSelection = {
   locations: string[]
   props: string[]
 }
+const GROK2API_SINGLE_INPUT_VIDEO_MODEL_IDS = new Set([
+  'grok-imagine-1.0-video',
+  'grok-imagine-video',
+])
+
+function createVideoWorkerLogger(job: Job<TaskJobData>, action: string) {
+  return createScopedLogger({
+    module: 'worker.video',
+    action,
+    requestId: job.data.trace?.requestId || undefined,
+    taskId: job.data.taskId,
+    projectId: job.data.projectId,
+    userId: job.data.userId,
+  })
+}
 
 function isOfficialGrokVideoModel(modelKey: string): boolean {
   const parsed = parseModelKeyStrict(modelKey)
   return parsed?.provider === 'grok'
+}
+
+function isGrok2ApiSingleInputVideoModel(modelKey: string): boolean {
+  const parsed = parseModelKeyStrict(modelKey)
+  if (!parsed) return false
+  return parsed.provider.startsWith('openai-compatible')
+    && GROK2API_SINGLE_INPUT_VIDEO_MODEL_IDS.has(parsed.modelId)
 }
 
 function toDurationMs(value: number | null | undefined): number | undefined {
@@ -150,9 +173,13 @@ function pickAppearanceDescription(appearance: {
   return null
 }
 
-async function normalizeVideoReferenceImages(inputs: string[]): Promise<string[]> {
+async function normalizeVideoReferenceImages(inputs: string[]): Promise<{
+  normalized: string[]
+  failedCount: number
+}> {
   const normalized: string[] = []
   const seen = new Set<string>()
+  let failedCount = 0
 
   for (const input of inputs.slice(0, 6)) {
     const trimmed = input.trim()
@@ -163,11 +190,14 @@ async function normalizeVideoReferenceImages(inputs: string[]): Promise<string[]
       seen.add(normalizedImage)
       normalized.push(normalizedImage)
     } catch {
-      // best effort only
+      failedCount += 1
     }
   }
 
-  return normalized
+  return {
+    normalized,
+    failedCount,
+  }
 }
 
 async function collectPanelVideoReferenceContext(input: {
@@ -177,11 +207,15 @@ async function collectPanelVideoReferenceContext(input: {
 }): Promise<{
   promptSuffix: string
   referenceImages: string[]
+  requestedReferenceImageCount: number
+  failedReferenceImageCount: number
 }> {
   if (!input.selection.includeCharacters && !input.selection.includeLocation && !input.selection.includeProps) {
     return {
       promptSuffix: '',
       referenceImages: [],
+      requestedReferenceImageCount: 0,
+      failedReferenceImageCount: 0,
     }
   }
 
@@ -280,7 +314,10 @@ async function collectPanelVideoReferenceContext(input: {
     }
   }
 
-  const referenceImages = await normalizeVideoReferenceImages(rawReferenceImages)
+  const {
+    normalized: referenceImages,
+    failedCount: failedReferenceImageCount,
+  } = await normalizeVideoReferenceImages(rawReferenceImages)
   const promptSuffix = promptSections.length > 0
     ? [
       'Reference consistency constraints:',
@@ -292,6 +329,8 @@ async function collectPanelVideoReferenceContext(input: {
   return {
     promptSuffix,
     referenceImages,
+    requestedReferenceImageCount: rawReferenceImages.length,
+    failedReferenceImageCount,
   }
 }
 
@@ -397,6 +436,7 @@ async function generateVideoForPanel(
   candidateMeta?: PanelVideoCandidateMeta | null
   actualVideoTokens?: number
 }> {
+  const logger = createVideoWorkerLogger(job, 'panel_video_generate')
   const firstLastFramePayload =
     typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
       ? (payload.firstLastFrame as AnyObj)
@@ -433,8 +473,31 @@ async function generateVideoForPanel(
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
-  let model = modelId
+  let model =
+    typeof firstLastFramePayload?.flModel === 'string' && firstLastFramePayload.flModel
+      ? firstLastFramePayload.flModel
+      : modelId
   let candidateMeta: PanelVideoCandidateMeta | null = null
+  let referenceHandling: string | null = null
+
+  if (referenceContext.failedReferenceImageCount > 0) {
+    logger.warn({
+      message: 'video reference image normalization partially failed',
+      details: {
+        panelId: panel.id,
+        requestedReferenceImageCount: referenceContext.requestedReferenceImageCount,
+        failedReferenceImageCount: referenceContext.failedReferenceImageCount,
+      },
+    })
+  }
+
+  if (videoOperation && isGrok2ApiSingleInputVideoModel(model)) {
+    throw new Error(`GROK2API_VIDEO_OPERATION_UNSUPPORTED: ${videoOperation.mode}`)
+  }
+
+  if (firstLastFramePayload && isGrok2ApiSingleInputVideoModel(model)) {
+    throw new Error('GROK2API_VIDEO_OPTION_UNSUPPORTED: firstlastframe')
+  }
 
   if (videoOperation) {
     const panelVideoCandidates = resolvePanelVideoCandidates({
@@ -489,21 +552,34 @@ async function generateVideoForPanel(
       throw new Error(`Panel ${panel.id} image url invalid`)
     }
     const normalizedPanelImage = await normalizeToBase64ForGeneration(sourceImageUrl)
-    if (isOfficialGrokVideoModel(modelId) && !firstLastFramePayload && referenceContext.referenceImages.length > 0) {
-      referenceImagesForGeneration = Array.from(new Set([
-        normalizedPanelImage,
-        ...referenceContext.referenceImages,
-      ])).slice(0, 7)
-    } else {
-      sourceImageBase64 = normalizedPanelImage
+    sourceImageBase64 = normalizedPanelImage
+    if (isOfficialGrokVideoModel(modelId) && referenceContext.referenceImages.length > 0) {
+      referenceImagesForGeneration = []
+      referenceHandling = 'prompt_only_provider_constraint'
+      logger.info({
+        message: 'official grok keeps panel image as primary input and downgrades extra reference images to prompt-only constraints',
+        details: {
+          panelId: panel.id,
+          requestedReferenceImageCount: referenceContext.requestedReferenceImageCount,
+          model: modelId,
+        },
+      })
+    }
+    if (isGrok2ApiSingleInputVideoModel(modelId) && referenceContext.referenceImages.length > 0) {
+      referenceImagesForGeneration = []
+      referenceHandling = 'prompt_only_provider_single_input'
+      logger.info({
+        message: 'grok2api keeps panel image as the only provider input and downgrades extra references to prompt-only constraints',
+        details: {
+          panelId: panel.id,
+          requestedReferenceImageCount: referenceContext.requestedReferenceImageCount,
+          model: modelId,
+        },
+      })
     }
   }
 
   if (firstLastFramePayload) {
-    model =
-      typeof firstLastFramePayload.flModel === 'string' && firstLastFramePayload.flModel
-        ? firstLastFramePayload.flModel
-        : modelId
     const firstLastFrameCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
     if (firstLastFrameCapabilities?.video?.firstlastframe !== true) {
       throw new Error(`VIDEO_FIRSTLASTFRAME_MODEL_UNSUPPORTED: ${model}`)
@@ -527,7 +603,43 @@ async function generateVideoForPanel(
   }
 
   if (isOfficialGrokVideoModel(model) && (videoOperation || firstLastFramePayload)) {
+    if (referenceImagesForGeneration.length > 0) {
+      referenceHandling = 'prompt_only_provider_constraint'
+      logger.info({
+        message: 'official grok ignores extra reference images for first-last-frame or video-operation requests',
+        details: {
+          panelId: panel.id,
+          requestedReferenceImageCount: referenceContext.requestedReferenceImageCount,
+          generationMode,
+          model,
+        },
+      })
+    }
     referenceImagesForGeneration = []
+  }
+
+  if (!referenceHandling) {
+    if (referenceImagesForGeneration.length > 0) {
+      referenceHandling = 'provider_reference_images'
+    } else if (referenceContext.promptSuffix) {
+      referenceHandling = 'prompt_only_reference_unavailable'
+    }
+  }
+
+  if (referenceHandling || candidateMeta) {
+    candidateMeta = {
+      ...(candidateMeta || {}),
+      ...(referenceHandling ? { referenceHandling } : {}),
+      ...(referenceHandling || referenceContext.requestedReferenceImageCount > 0
+        ? { requestedReferenceImageCount: referenceContext.requestedReferenceImageCount }
+        : {}),
+      ...(referenceHandling || referenceImagesForGeneration.length > 0
+        ? { sentReferenceImageCount: referenceImagesForGeneration.length }
+        : {}),
+      ...(referenceContext.failedReferenceImageCount > 0
+        ? { failedReferenceImageCount: referenceContext.failedReferenceImageCount }
+        : {}),
+    }
   }
 
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {

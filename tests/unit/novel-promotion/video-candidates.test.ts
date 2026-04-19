@@ -159,6 +159,49 @@ describe('video candidates helpers', () => {
     })
   })
 
+  it('preserves reference usage metadata for debugging official-provider behavior', () => {
+    const next = appendPanelVideoCandidate(
+      {
+        videoUrl: 'cos/current.mp4',
+        videoGenerationMode: 'normal',
+        videoCandidates: JSON.stringify([
+          {
+            id: 'current',
+            videoUrl: 'cos/current.mp4',
+            generationMode: 'normal',
+            createdAt: '2026-04-08T00:00:00.000Z',
+          },
+        ]),
+      },
+      {
+        id: 'grok-text-only',
+        videoUrl: 'cos/grok.mp4',
+        generationMode: 'normal',
+        createdAt: '2026-04-09T00:00:00.000Z',
+        meta: {
+          referenceHandling: 'prompt_only_provider_constraint',
+          requestedReferenceImageCount: 3,
+          sentReferenceImageCount: 0,
+          failedReferenceImageCount: 1,
+        },
+      },
+    )
+
+    const resolved = resolvePanelVideoCandidates({
+      videoUrl: next.selectedVideoUrl,
+      videoGenerationMode: next.selectedGenerationMode,
+      videoCandidates: next.serialized,
+    })
+    const candidate = resolved.find((item) => item.id === 'grok-text-only')
+
+    expect(candidate?.meta).toEqual({
+      referenceHandling: 'prompt_only_provider_constraint',
+      requestedReferenceImageCount: 3,
+      sentReferenceImageCount: 0,
+      failedReferenceImageCount: 1,
+    })
+  })
+
   it('estimates candidate duration through edit and extend lineage', () => {
     const candidates = resolvePanelVideoCandidates({
       videoUrl: 'cos/base.mp4',

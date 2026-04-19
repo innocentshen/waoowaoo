@@ -340,6 +340,44 @@ describe('api specific - unified assets routes', () => {
     expect(body).toEqual({ success: true })
   })
 
+  it('PATCH /api/assets/[assetId]/variants/[variantId] updates a global location variant through the unified route', async () => {
+    const mod = await import('@/app/api/assets/[assetId]/variants/[variantId]/route')
+    const req = buildMockRequest({
+      path: '/api/assets/location-1/variants/location-image-1',
+      method: 'PATCH',
+      body: {
+        scope: 'global',
+        kind: 'location',
+        description: '闆ㄥ鐭虫澘琛楅亾锛岃礉澹冲簵鍜栧暋鏆栧厜锛屼袱渚ц法搴ф湁絀洪棿',
+        availableSlots: [{ id: 'doorway-left', label: 'Left Doorway' }],
+      },
+    })
+
+    const res = await mod.PATCH(req, {
+      params: Promise.resolve({ assetId: 'location-1', variantId: 'location-image-1' }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(authMock.requireUserAuth).toHaveBeenCalled()
+    expect(updateAssetVariantMock).toHaveBeenCalledWith({
+      kind: 'location',
+      assetId: 'location-1',
+      variantId: 'location-image-1',
+      body: {
+        scope: 'global',
+        kind: 'location',
+        description: '闆ㄥ鐭虫澘琛楅亾锛岃礉澹冲簵鍜栧暋鏆栧厜锛屼袱渚ц法搴ф湁絀洪棿',
+        availableSlots: [{ id: 'doorway-left', label: 'Left Doorway' }],
+      },
+      access: {
+        scope: 'global',
+        userId: 'user-1',
+      },
+    })
+    expect(body).toEqual({ success: true })
+  })
+
   it('POST /api/assets/[assetId]/select-render confirms a project prop through the unified route', async () => {
     const mod = await import('@/app/api/assets/[assetId]/select-render/route')
     const req = buildMockRequest({

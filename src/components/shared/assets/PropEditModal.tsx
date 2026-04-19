@@ -19,6 +19,7 @@ export interface PropEditModalProps {
   propName: string
   summary: string
   description: string
+  imageIndex?: number
   variantId?: string
   projectId?: string
   onClose: () => void
@@ -31,6 +32,7 @@ export function PropEditModal({
   propName,
   summary,
   description,
+  imageIndex,
   variantId,
   projectId,
   onClose,
@@ -136,7 +138,10 @@ export function PropEditModal({
     try {
       setIsSaving(true)
       await persist()
-      await actions.generate({ id: propId })
+      await actions.generate({
+        id: propId,
+        ...(typeof imageIndex === 'number' ? { imageIndex } : {}),
+      })
       onClose()
     } finally {
       setIsSaving(false)

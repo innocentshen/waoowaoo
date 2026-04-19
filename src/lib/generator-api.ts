@@ -44,6 +44,9 @@ const GROK2API_SUPPORTED_SIZES = new Set([
     '1792x1024',
     '1024x1792',
 ])
+const GROK2API_VIDEO_SUPPORTED_RESOLUTIONS = new Set(['480p', '720p'])
+const GROK2API_VIDEO_SUPPORTED_DURATIONS = new Set([6, 10, 12, 16, 20])
+const GROK2API_VIDEO_SUPPORTED_PRESETS = new Set(['fun', 'normal', 'spicy', 'custom'])
 const GROK2API_ASPECT_RATIO_TO_SIZE: Record<string, string> = {
     '1:1': '1024x1024',
     '16:9': '1280x720',
@@ -54,7 +57,6 @@ const GROK2API_ASPECT_RATIO_TO_SIZE: Record<string, string> = {
 const GROK2API_VIDEO_QUALITY_BY_RESOLUTION: Record<string, 'standard' | 'high'> = {
     '480p': 'standard',
     '720p': 'high',
-    '1080p': 'high',
 }
 
 /**
@@ -78,6 +80,15 @@ function readStringOption(value: unknown): string | undefined {
     if (typeof value !== 'string') return undefined
     const trimmed = value.trim()
     return trimmed || undefined
+}
+
+function readNumericOption(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value !== 'string') return undefined
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function isGrok2ApiImageModelId(modelId: string): boolean {
@@ -121,14 +132,58 @@ function normalizeGrok2ApiVideoTemplateOptions(
 ): Record<string, unknown> {
     const next = { ...options }
     const explicitSize = readStringOption(next.size)
+    const explicitResolution = readStringOption(next.resolution)
+    const explicitResolutionName = readStringOption(next.resolution_name)
+    const explicitPreset = readStringOption(next.preset)
     const explicitQuality = readStringOption(next.quality)
+    const explicitDuration = readNumericOption(next.duration)
 
-    const mappedSize = explicitSize || aspectRatioToGrok2ApiSize(readStringOption(next.aspectRatio)) || '1792x1024'
-    const mappedQuality = explicitQuality || GROK2API_VIDEO_QUALITY_BY_RESOLUTION[readStringOption(next.resolution) || ''] || 'standard'
+    if (explicitSize && !GROK2API_SUPPORTED_SIZES.has(explicitSize)) {
+        throw new Error(`GROK2API_VIDEO_SIZE_UNSUPPORTED: ${explicitSize}`)
+    }
+
+    const explicitAspectRatio = readStringOption(next.aspectRatio)
+    if (explicitAspectRatio && !aspectRatioToGrok2ApiSize(explicitAspectRatio)) {
+        throw new Error(`GROK2API_VIDEO_ASPECT_RATIO_UNSUPPORTED: ${explicitAspectRatio}`)
+    }
+
+    if (
+        explicitResolution
+        && explicitResolutionName
+        && explicitResolution !== explicitResolutionName
+    ) {
+        throw new Error('GROK2API_VIDEO_RESOLUTION_CONFLICT: resolution and resolution_name must match')
+    }
+
+    const normalizedResolution = explicitResolutionName || explicitResolution || '720p'
+    if (!GROK2API_VIDEO_SUPPORTED_RESOLUTIONS.has(normalizedResolution)) {
+        throw new Error(`GROK2API_VIDEO_RESOLUTION_UNSUPPORTED: ${normalizedResolution}`)
+    }
+
+    const normalizedPreset = explicitPreset || 'normal'
+    if (!GROK2API_VIDEO_SUPPORTED_PRESETS.has(normalizedPreset)) {
+        throw new Error(`GROK2API_VIDEO_PRESET_UNSUPPORTED: ${normalizedPreset}`)
+    }
+
+    if (explicitDuration !== undefined) {
+        const normalizedDuration = Math.round(explicitDuration)
+        if (normalizedDuration !== explicitDuration || !GROK2API_VIDEO_SUPPORTED_DURATIONS.has(normalizedDuration)) {
+            throw new Error(`GROK2API_VIDEO_DURATION_UNSUPPORTED: ${String(explicitDuration)}`)
+        }
+        next.duration = normalizedDuration
+    } else {
+        next.duration = 6
+    }
+
+    const mappedSize = explicitSize || aspectRatioToGrok2ApiSize(explicitAspectRatio) || '1792x1024'
+    const mappedQuality = explicitQuality || GROK2API_VIDEO_QUALITY_BY_RESOLUTION[normalizedResolution] || 'standard'
 
     return {
         ...next,
         size: mappedSize,
+        resolution: normalizedResolution,
+        resolution_name: normalizedResolution,
+        preset: normalizedPreset,
         quality: mappedQuality,
     }
 }
@@ -348,6 +403,20 @@ export async function generateVideo(
 
     const { prompt, referenceImages, ...providerOptions } = options || {}
     if (gatewayRoute === 'openai-compat') {
+        if (isGrok2ApiVideoModelId(selection.modelId)) {
+            if (source.videoUrl) {
+                throw new Error(
+                    `GROK2API_VIDEO_INPUT_UNSUPPORTED: ${selection.modelKey} supports only image-to-video input_reference`,
+                )
+            }
+            const requestedMode = readStringOption(providerOptions.generationMode)
+            if (requestedMode && requestedMode !== 'normal') {
+                throw new Error(`GROK2API_VIDEO_OPTION_UNSUPPORTED: generationMode=${requestedMode}`)
+            }
+            if (providerOptions.lastFrameImageUrl) {
+                throw new Error(`GROK2API_VIDEO_OPTION_UNSUPPORTED: lastFrameImageUrl`)
+            }
+        }
         if (source.videoUrl && !source.imageUrl) {
             throw new Error(`VIDEO_INPUT_UNSUPPORTED: ${selection.modelKey} requires imageUrl`)
         }
@@ -363,7 +432,7 @@ export async function generateVideo(
                 modelId: selection.modelId,
                 modelKey: selection.modelKey,
                 imageUrl: source.imageUrl || '',
-                referenceImages,
+                referenceImages: isGrok2ApiVideoModelId(selection.modelId) ? [] : referenceImages,
                 prompt: prompt || '',
                 options: {
                     ...compatOptions,

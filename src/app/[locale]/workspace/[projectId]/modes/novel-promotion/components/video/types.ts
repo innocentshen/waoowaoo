@@ -20,6 +20,10 @@ export interface VideoCandidateMeta {
   sourceCandidateId?: string | null
   sourceGenerationMode?: VideoGenerationMode | null
   extendDuration?: number | null
+  referenceHandling?: string | null
+  requestedReferenceImageCount?: number | null
+  sentReferenceImageCount?: number | null
+  failedReferenceImageCount?: number | null
 }
 
 export interface VideoReferenceCharacter {

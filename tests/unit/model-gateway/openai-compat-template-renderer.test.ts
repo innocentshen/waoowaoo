@@ -154,6 +154,25 @@ describe('model-gateway openai-compat template renderer', () => {
     expect(readJsonPath(payload, '$.task.status')).toBe('succeeded')
   })
 
+  it('exposes extra option placeholders in both original and snake_case forms', () => {
+    const variables = buildTemplateVariables({
+      model: 'grok-imagine-video',
+      prompt: 'animate',
+      extra: {
+        preset: 'normal',
+        resolutionName: '720p',
+      },
+    })
+
+    expect(renderTemplateValue({
+      preset: '{{preset}}',
+      resolution_name: '{{resolution_name}}',
+    }, variables)).toEqual({
+      preset: 'normal',
+      resolution_name: '720p',
+    })
+  })
+
   it('extracts upstream error message from common payload shape', () => {
     const message = extractTemplateError({
       version: 1,

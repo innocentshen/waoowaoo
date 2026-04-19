@@ -28,6 +28,7 @@ vi.mock('@/lib/query/hooks', () => ({
   useUpdateLocationName: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateProjectLocationName: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateLocationSummary: () => ({ mutateAsync: vi.fn() }),
+  useUpdateLocationImageDescription: () => ({ mutateAsync: vi.fn() }),
   useUpdateProjectLocationDescription: () => ({ mutateAsync: vi.fn() }),
   useAiModifyLocationDescription: () => ({ mutateAsync: vi.fn() }),
   useAiModifyProjectLocationDescription: () => ({ mutateAsync: vi.fn() }),

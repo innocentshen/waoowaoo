@@ -138,6 +138,36 @@ describe('asset hub character image prompt suffix regression', () => {
     })
   })
 
+  it('honors imageIndex for single global location regeneration', async () => {
+    prismaMock.globalLocation.findFirst.mockResolvedValueOnce({
+      id: 'global-location-1',
+      name: 'Old Town',
+      images: [
+        { id: 'global-location-image-1', imageIndex: 0, description: '闆ㄥ琛楅亾 A' },
+        { id: 'global-location-image-2', imageIndex: 1, description: '闆ㄥ琛楅亾 B' },
+        { id: 'global-location-image-3', imageIndex: 2, description: '闆ㄥ琛楅亾 C' },
+      ],
+    })
+
+    const result = await handleAssetHubImageTask(buildJob({
+      type: 'location',
+      id: 'global-location-1',
+      imageIndex: 1,
+    }))
+
+    expect(result).toEqual({
+      type: 'location',
+      locationId: 'global-location-1',
+      imageCount: 1,
+    })
+    expect(sharedMock.generateCleanImageToStorage).toHaveBeenCalledTimes(1)
+    expect(prismaMock.globalLocationImage.update).toHaveBeenCalledTimes(1)
+    expect(prismaMock.globalLocationImage.update).toHaveBeenCalledWith({
+      where: { id: 'global-location-image-2' },
+      data: { imageUrl: 'cos/generated-character.png' },
+    })
+  })
+
   it('keeps the prop prompt suffix in global prop generation prompts', async () => {
     prismaMock.globalLocation.findFirst.mockResolvedValueOnce({
       id: 'global-prop-1',

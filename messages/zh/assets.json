@@ -52,6 +52,7 @@
         "secondary": "子状态",
         "generateFromPrimary": "基于主形象生成",
         "selectPrimaryFirst": "请先选择主形象",
+        "appearance": "形象",
         "editing": "编辑中...",
         "confirming": "确认中...",
         "assetCount": "{count} 个形象",

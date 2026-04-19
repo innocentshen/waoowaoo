@@ -194,11 +194,11 @@ describe('user-api model template schema', () => {
     expect(result.template?.create.multipartFileFields).toEqual(['input_reference'])
   })
 
-  it('accepts grok2api video placeholders such as quality', () => {
+  it('accepts grok2api video placeholders such as quality, resolution_name, and preset', () => {
     const result = validateOpenAICompatMediaTemplate({
       version: 1,
       mediaType: 'video',
-      mode: 'sync',
+      mode: 'async',
       create: {
         method: 'POST',
         path: '/videos',
@@ -209,17 +209,32 @@ describe('user-api model template schema', () => {
           prompt: '{{prompt}}',
           seconds: '{{duration}}',
           size: '{{size}}',
+          resolution_name: '{{resolution_name}}',
+          preset: '{{preset}}',
           quality: '{{quality}}',
           input_reference: '{{image}}',
         },
       },
+      status: {
+        method: 'GET',
+        path: '/videos/{{task_id}}',
+      },
       response: {
-        outputUrlPath: '$.url',
+        taskIdPath: '$.id',
+        statusPath: '$.status',
+      },
+      polling: {
+        intervalMs: 5000,
+        timeoutMs: 600000,
+        doneStates: ['completed'],
+        failStates: ['failed'],
       },
     })
 
     expect(result.ok).toBe(true)
     expect(result.template?.create.bodyTemplate).toMatchObject({
+      resolution_name: '{{resolution_name}}',
+      preset: '{{preset}}',
       quality: '{{quality}}',
     })
   })

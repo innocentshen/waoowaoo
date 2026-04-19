@@ -52,6 +52,7 @@
         "secondary": "Secondary",
         "generateFromPrimary": "Generate from Primary",
         "selectPrimaryFirst": "Select primary first",
+        "appearance": "Appearance",
         "editing": "Editing...",
         "confirming": "Confirming...",
         "assetCount": "{count} Appearances",

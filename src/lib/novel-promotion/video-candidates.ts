@@ -4,6 +4,10 @@ export interface PanelVideoCandidateMeta {
   sourceCandidateId?: string | null
   sourceGenerationMode?: PanelVideoGenerationMode | null
   extendDuration?: number | null
+  referenceHandling?: string | null
+  requestedReferenceImageCount?: number | null
+  sentReferenceImageCount?: number | null
+  failedReferenceImageCount?: number | null
 }
 
 export interface StoredPanelVideoCandidate {
@@ -43,6 +47,11 @@ function normalizeGenerationMode(value: unknown): PanelVideoGenerationMode {
   return 'normal'
 }
 
+function normalizeOptionalNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.max(0, Math.round(value))
+}
+
 function normalizeCandidateMeta(value: unknown): PanelVideoCandidateMeta | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const candidateMeta = value as Record<string, unknown>
@@ -52,16 +61,34 @@ function normalizeCandidateMeta(value: unknown): PanelVideoCandidateMeta | null 
   const sourceGenerationMode = candidateMeta.sourceGenerationMode === undefined || candidateMeta.sourceGenerationMode === null
     ? null
     : normalizeGenerationMode(candidateMeta.sourceGenerationMode)
-  const extendDuration = typeof candidateMeta.extendDuration === 'number' && Number.isFinite(candidateMeta.extendDuration)
-    ? Math.round(candidateMeta.extendDuration)
+  const extendDuration = normalizeOptionalNonNegativeInteger(candidateMeta.extendDuration)
+  const referenceHandling = isNonEmptyString(candidateMeta.referenceHandling)
+    ? candidateMeta.referenceHandling.trim()
     : null
+  const requestedReferenceImageCount = normalizeOptionalNonNegativeInteger(candidateMeta.requestedReferenceImageCount)
+  const sentReferenceImageCount = normalizeOptionalNonNegativeInteger(candidateMeta.sentReferenceImageCount)
+  const failedReferenceImageCount = normalizeOptionalNonNegativeInteger(candidateMeta.failedReferenceImageCount)
 
-  if (!sourceCandidateId && !sourceGenerationMode && extendDuration === null) return null
+  if (
+    !sourceCandidateId
+    && !sourceGenerationMode
+    && extendDuration === null
+    && !referenceHandling
+    && requestedReferenceImageCount === null
+    && sentReferenceImageCount === null
+    && failedReferenceImageCount === null
+  ) {
+    return null
+  }
 
   return {
     ...(sourceCandidateId ? { sourceCandidateId } : {}),
     ...(sourceGenerationMode ? { sourceGenerationMode } : {}),
     ...(extendDuration !== null ? { extendDuration } : {}),
+    ...(referenceHandling ? { referenceHandling } : {}),
+    ...(requestedReferenceImageCount !== null ? { requestedReferenceImageCount } : {}),
+    ...(sentReferenceImageCount !== null ? { sentReferenceImageCount } : {}),
+    ...(failedReferenceImageCount !== null ? { failedReferenceImageCount } : {}),
   }
 }
 

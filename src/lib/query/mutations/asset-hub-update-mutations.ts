@@ -121,6 +121,37 @@ export function useUpdateLocationSummary() {
   })
 }
 
+export function useUpdateLocationImageDescription() {
+  const queryClient = useQueryClient()
+  const invalidateLocations = () => invalidateGlobalLocations(queryClient)
+
+  return useMutation({
+    mutationFn: async ({
+      locationId,
+      variantId,
+      description,
+      availableSlots,
+    }: {
+      locationId: string
+      variantId: string
+      description: string
+      availableSlots?: LocationAvailableSlot[]
+    }) => {
+      return await requestJsonWithError(`/api/assets/${locationId}/variants/${variantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'global',
+          kind: 'location',
+          description,
+          ...(availableSlots ? { availableSlots } : {}),
+        }),
+      }, 'Failed to update location description')
+    },
+    onSuccess: invalidateLocations,
+  })
+}
+
 export function useAiModifyCharacterDescription() {
   return useMutation({
     mutationFn: async ({

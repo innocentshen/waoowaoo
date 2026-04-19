@@ -128,7 +128,7 @@ describe('generator-api grok2api compat template normalization', () => {
     }))
   })
 
-  it('maps grok2api video aspect ratio and resolution to size and quality', async () => {
+  it('maps grok2api video aspect ratio and resolution to provider-aligned options', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'openai-compatible:oa-1',
       modelId: 'grok-imagine-video',
@@ -142,15 +142,84 @@ describe('generator-api grok2api compat template normalization', () => {
       aspectRatio: '9:16',
       resolution: '720p',
       duration: 6,
+      preset: 'spicy',
+      referenceImages: ['https://example.com/ref-a.png'],
+    })
+
+    expect(generateVideoViaOpenAICompatTemplateMock).toHaveBeenCalledWith(expect.objectContaining({
+      referenceImages: [],
+      options: expect.objectContaining({
+        aspectRatio: '9:16',
+        resolution: '720p',
+        resolution_name: '720p',
+        size: '720x1280',
+        preset: 'spicy',
+        quality: 'high',
+      }),
+    }))
+  })
+
+  it('fills grok2api video defaults that the upstream server expects when controls are omitted', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId: 'grok-imagine-video',
+      modelKey: 'openai-compatible:oa-1::grok-imagine-video',
+      mediaType: 'video',
+      compatMediaTemplate: VIDEO_TEMPLATE,
+    })
+
+    await generateVideo('user-1', 'openai-compatible:oa-1::grok-imagine-video', 'https://example.com/source.png', {
+      prompt: 'animate',
     })
 
     expect(generateVideoViaOpenAICompatTemplateMock).toHaveBeenCalledWith(expect.objectContaining({
       options: expect.objectContaining({
-        aspectRatio: '9:16',
+        duration: 6,
         resolution: '720p',
-        size: '720x1280',
-        quality: 'high',
+        resolution_name: '720p',
+        preset: 'normal',
+        size: '1792x1024',
       }),
     }))
+  })
+
+  it('rejects grok2api video generation modes that the upstream server does not expose', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId: 'grok-imagine-video',
+      modelKey: 'openai-compatible:oa-1::grok-imagine-video',
+      mediaType: 'video',
+      compatMediaTemplate: VIDEO_TEMPLATE,
+    })
+
+    await expect(generateVideo(
+      'user-1',
+      'openai-compatible:oa-1::grok-imagine-video',
+      'https://example.com/source.png',
+      {
+        prompt: 'animate',
+        generationMode: 'edit',
+      },
+    )).rejects.toThrow('GROK2API_VIDEO_OPTION_UNSUPPORTED: generationMode=edit')
+  })
+
+  it('rejects grok2api video resolution values that are not supported by the upstream server', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId: 'grok-imagine-video',
+      modelKey: 'openai-compatible:oa-1::grok-imagine-video',
+      mediaType: 'video',
+      compatMediaTemplate: VIDEO_TEMPLATE,
+    })
+
+    await expect(generateVideo(
+      'user-1',
+      'openai-compatible:oa-1::grok-imagine-video',
+      'https://example.com/source.png',
+      {
+        prompt: 'animate',
+        resolution: '1080p',
+      },
+    )).rejects.toThrow('GROK2API_VIDEO_RESOLUTION_UNSUPPORTED: 1080p')
   })
 })

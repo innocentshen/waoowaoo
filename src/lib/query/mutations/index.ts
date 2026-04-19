@@ -27,6 +27,7 @@ export {
     useUpdateLocationName,
     useUpdateCharacterAppearanceDescription,
     useUpdateLocationSummary,
+    useUpdateLocationImageDescription,
     useAiModifyCharacterDescription,
     useAiModifyLocationDescription,
     useAiModifyPropDescription,

@@ -7,7 +7,7 @@ import { assertTaskActive } from '@/lib/workers/utils'
 import type { TaskJobData } from '@/lib/task/types'
 import { resolveAnalysisModel } from './shot-ai-persist'
 import { runShotPromptCompletion } from './shot-ai-prompt-runtime'
-import { parsePanelCharacterReferences, parseJsonStringArray } from './image-task-handler-shared'
+import { parsePanelCharacterReferences, parseJsonStringArray, parseNamedReferenceList } from './image-task-handler-shared'
 import { parseJsonObject, readRequiredString, readText, type AnyObj } from './shot-ai-prompt-utils'
 
 const PANEL_PROMPT_CONTEXT_SELECT = {
@@ -281,16 +281,15 @@ export async function handleGeneratePanelVideoPromptTask(job: Job<TaskJobData>, 
 
   const panelCharacters = parsePanelCharacterReferences(panel.characters)
   const panelProps = parseJsonStringArray(panel.props)
-  const panelLocation = typeof panel.location === 'string' ? panel.location.trim() : ''
+  const panelLocations = parseNamedReferenceList(panel.location)
+  const panelLocation = panelLocations[0] || ''
   const nextPanelCharacters = nextPanel ? parsePanelCharacterReferences(nextPanel.characters) : []
   const nextPanelProps = nextPanel ? parseJsonStringArray(nextPanel.props) : []
-  const nextPanelLocation = nextPanel && typeof nextPanel.location === 'string' ? nextPanel.location.trim() : ''
+  const nextPanelLocations = nextPanel ? parseNamedReferenceList(nextPanel.location) : []
+  const nextPanelLocation = nextPanelLocations[0] || ''
   const mergedCharacters = mergeCharacterPresetDetails(panelCharacters, nextPanelCharacters)
   const mergedProps = mergeStringPresets(panelProps, nextPanelProps)
-  const mergedLocations = mergeStringPresets(
-    panelLocation ? [panelLocation] : [],
-    nextPanelLocation ? [nextPanelLocation] : [],
-  )
+  const mergedLocations = mergeStringPresets(panelLocations, nextPanelLocations)
   const promptMode = nextPanel ? 'firstlastframe_transition' : 'single_panel'
   const locationAssets = (projectData.locations || [])
     .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
@@ -347,7 +346,7 @@ export async function handleGeneratePanelVideoPromptTask(job: Job<TaskJobData>, 
       panel_shot_type: panel.shotType?.trim() || '未提供',
       panel_camera_move: panel.cameraMove?.trim() || '未提供',
       panel_characters: formatCharacterPresetDetails(panelCharacters),
-      panel_location: formatSinglePreset(panelLocation),
+      panel_location: formatPresetList(panelLocations),
       panel_props: formatPresetList(panelProps),
       panel_dialogue_lines: formatDialogueLines(panelDialogueLines),
       next_panel_story_text:
@@ -361,7 +360,7 @@ export async function handleGeneratePanelVideoPromptTask(job: Job<TaskJobData>, 
       next_panel_shot_type: nextPanel?.shotType?.trim() || '无',
       next_panel_camera_move: nextPanel?.cameraMove?.trim() || '无',
       next_panel_characters: formatCharacterPresetDetails(nextPanelCharacters),
-      next_panel_location: formatSinglePreset(nextPanelLocation),
+      next_panel_location: formatPresetList(nextPanelLocations),
       next_panel_props: formatPresetList(nextPanelProps),
       next_panel_dialogue_lines: formatDialogueLines(nextPanelDialogueLines),
       characters_description: [

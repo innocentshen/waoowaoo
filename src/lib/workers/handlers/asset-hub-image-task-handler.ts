@@ -33,6 +33,7 @@ interface GlobalCharacterRecord {
 
 interface GlobalLocationImageRecord {
   id: string
+  imageIndex: number
   description: string | null
   availableSlots?: string | null
 }
@@ -135,10 +136,18 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     const modelId = userModels.locationModel
     if (!modelId) throw new Error('User location model not configured')
 
+    const hasRequestedImageIndex = Object.prototype.hasOwnProperty.call(payload, 'imageIndex')
+    const requestedImageIndex = hasRequestedImageIndex ? Number(payload.imageIndex) : null
     const count = normalizeImageGenerationCount('location', payload.count)
-    const targetImages = Object.prototype.hasOwnProperty.call(payload, 'count')
-      ? location.images.slice(0, count)
-      : location.images
+    const targetImages = hasRequestedImageIndex
+      ? location.images.filter((image) => image.imageIndex === requestedImageIndex)
+      : Object.prototype.hasOwnProperty.call(payload, 'count')
+        ? location.images.slice(0, count)
+        : location.images
+
+    if (hasRequestedImageIndex && targetImages.length === 0) {
+      throw new Error(`Global location image not found for imageIndex=${String(payload.imageIndex)}`)
+    }
 
     for (const image of targetImages) {
       if (!image.description) continue

@@ -32,7 +32,6 @@ export default function AssetHubPage() {
     const t = useTranslations('assetHub')
     const queryClient = useQueryClient()
     const { count: characterGenerationCount } = useImageGenerationCount('character')
-    const { count: locationGenerationCount } = useImageGenerationCount('location')
 
     // 文件夹选择状态
     const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
@@ -95,6 +94,7 @@ export default function AssetHubPage() {
         locationName: string
         summary: string
         imageIndex: number
+        variantId: string
         artStyle: string | null
         description: string
     } | null>(null)
@@ -103,6 +103,7 @@ export default function AssetHubPage() {
         propName: string
         summary: string
         description: string
+        imageIndex: number
         variantId?: string
     } | null>(null)
 
@@ -283,14 +284,16 @@ export default function AssetHubPage() {
             name: string
             summary: string | null
             artStyle: string | null
-            images: Array<{ imageIndex: number; description: string | null }>
+            images: Array<{ id: string; imageIndex: number; description: string | null }>
         }
         const image = typedLocation.images.find(img => img.imageIndex === imageIndex)
+        if (!image) return
         setLocationEditModal({
             locationId: typedLocation.id,
             locationName: typedLocation.name,
             summary: typedLocation.summary || '',
             imageIndex: imageIndex,
+            variantId: image.id,
             artStyle: typedLocation.artStyle || null,
             description: image?.description || typedLocation.summary || ''
         })
@@ -309,38 +312,36 @@ export default function AssetHubPage() {
             propName: typedProp.name,
             summary: typedProp.summary || '',
             description: variant?.description || typedProp.summary || '',
+            imageIndex,
             variantId: variant?.id,
         })
     }
 
     // 角色编辑后触发生成
-    const handleCharacterEditGenerate = async () => {
-        if (!characterEditModal) return
+    const handleCharacterEditGenerate = async (characterId: string, appearanceKey: string) => {
+        const appearanceIndex = Number(appearanceKey)
+        if (!Number.isFinite(appearanceIndex)) return
 
         try {
             await characterActions.generate({
-                id: characterEditModal.characterId,
-                appearanceIndex: characterEditModal.appearanceIndex,
-                artStyle: characterEditModal.artStyle || undefined,
+                id: characterId,
+                appearanceIndex,
                 count: characterGenerationCount,
             })
-            queryClient.invalidateQueries({ queryKey: queryKeys.globalAssets.characters() })
+            refreshAssets()
         } catch (error) {
             _ulogError('触发生成失败:', error)
         }
     }
 
     // 场景编辑后触发生成
-    const handleLocationEditGenerate = async () => {
-        if (!locationEditModal) return
-
+    const handleLocationEditGenerate = async (locationId: string, imageIndex: number) => {
         try {
             await locationActions.generate({
-                id: locationEditModal.locationId,
-                artStyle: locationEditModal.artStyle || undefined,
-                count: locationGenerationCount,
+                id: locationId,
+                imageIndex,
             })
-            queryClient.invalidateQueries({ queryKey: queryKeys.globalAssets.locations() })
+            refreshAssets()
         } catch (error) {
             _ulogError('触发生成失败:', error)
         }
@@ -615,6 +616,7 @@ export default function AssetHubPage() {
                     locationName={locationEditModal.locationName}
                     summary={locationEditModal.summary}
                     imageIndex={locationEditModal.imageIndex}
+                    variantId={locationEditModal.variantId}
                     description={locationEditModal.description}
                     onClose={() => setLocationEditModal(null)}
                     onSave={handleLocationEditGenerate}
@@ -628,6 +630,7 @@ export default function AssetHubPage() {
                     propName={propEditModal.propName}
                     summary={propEditModal.summary}
                     description={propEditModal.description}
+                    imageIndex={propEditModal.imageIndex}
                     variantId={propEditModal.variantId}
                     onClose={() => setPropEditModal(null)}
                     onRefresh={refreshAssets}

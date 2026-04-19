@@ -9,8 +9,8 @@ import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import {
     useAiModifyLocationDescription,
     useAiModifyProjectLocationDescription,
+    useUpdateLocationImageDescription,
     useUpdateLocationName,
-    useUpdateLocationSummary,
     useUpdateProjectLocationDescription,
     useUpdateProjectLocationName,
 } from '@/lib/query/hooks'
@@ -24,11 +24,12 @@ export interface LocationEditModalProps {
     description: string
     summary?: string
     imageIndex?: number
+    variantId?: string
     projectId?: string
     descriptionIndex?: number
     isTaskRunning?: boolean
     onClose: () => void
-    onSave: (locationId: string) => void
+    onSave: (locationId: string, imageIndex: number) => void
     onUpdate?: (newDescription: string) => void
     onNameUpdate?: (newName: string) => void
     onRefresh?: () => void
@@ -41,6 +42,7 @@ export function LocationEditModal({
     description,
     summary,
     imageIndex,
+    variantId,
     projectId,
     descriptionIndex,
     isTaskRunning = false,
@@ -88,8 +90,8 @@ export function LocationEditModal({
         : null
 
     const updateAssetHubName = useUpdateLocationName()
+    const updateAssetHubDescription = useUpdateLocationImageDescription()
     const updateProjectName = useUpdateProjectLocationName(projectId ?? '')
-    const updateAssetHubSummary = useUpdateLocationSummary()
     const updateProjectDescription = useUpdateProjectLocationDescription(projectId ?? '')
     const aiModifyAssetHub = useAiModifyLocationDescription()
     const aiModifyProject = useAiModifyProjectLocationDescription(projectId ?? '')
@@ -113,9 +115,13 @@ export function LocationEditModal({
 
     const persistDescription = async () => {
         if (mode === 'asset-hub') {
-            await updateAssetHubSummary.mutateAsync({
+            if (!variantId) {
+                throw new Error('Missing variantId')
+            }
+            await updateAssetHubDescription.mutateAsync({
                 locationId,
-                summary: editingDescription,
+                variantId,
+                description: editingDescription,
                 availableSlots,
             })
             return
@@ -216,7 +222,7 @@ export function LocationEditModal({
                 await persistDescription()
                 onUpdate?.(savedDescription)
                 onRefresh?.()
-                onSave(locationId)
+                onSave(locationId, resolvedImageIndex)
             } catch (error: unknown) {
                 if (shouldShowError(error)) {
                     alert(getErrorMessage(error, t('errors.saveFailed')))
