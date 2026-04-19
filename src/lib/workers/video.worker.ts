@@ -473,7 +473,7 @@ async function generateVideoForPanel(
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
-  let model =
+  const model =
     typeof firstLastFramePayload?.flModel === 'string' && firstLastFramePayload.flModel
       ? firstLastFramePayload.flModel
       : modelId

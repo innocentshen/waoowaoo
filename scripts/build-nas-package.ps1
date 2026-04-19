@@ -119,9 +119,9 @@ What still needs to run
 Important runtime notes
 -----------------------
 - This package already uses your current .env values as the base.
-- NEXTAUTH_URL has been set to: http://$PublicHost:3000
+- NEXTAUTH_URL has been set to: http://$($PublicHost):3000
 - INTERNAL_APP_URL stays on 127.0.0.1 inside the container.
-- Bull Board is exposed on: http://$PublicHost:3010/admin/queues
+- Bull Board is exposed on: http://$($PublicHost):3010/admin/queues
 - This app uses cookie-based auth. Do not try to solve future domain access with wildcard CORS.
   Keep browser access same-origin through your reverse proxy / tunnel.
   When your public domain is ready, only change:
@@ -143,7 +143,7 @@ How to deploy on NAS
 3. Start the app:
    docker compose up -d
 4. Open:
-   http://$PublicHost:3000
+   http://$($PublicHost):3000
 
 If you later switch to a public domain
 --------------------------------------
