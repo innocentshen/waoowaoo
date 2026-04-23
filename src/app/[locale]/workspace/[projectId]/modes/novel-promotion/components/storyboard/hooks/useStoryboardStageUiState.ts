@@ -9,6 +9,7 @@ export function useStoryboardStageUiState() {
   } | null>(null)
 
   const [sourcePanelPickerPanelId, setSourcePanelPickerPanelId] = useState<string | null>(null)
+  const [historyPanelPickerPanelId, setHistoryPanelPickerPanelId] = useState<string | null>(null)
 
   const [aiDataPanel, setAIDataPanel] = useState<{
     storyboardId: string
@@ -22,6 +23,8 @@ export function useStoryboardStageUiState() {
     setAssetPickerPanel,
     sourcePanelPickerPanelId,
     setSourcePanelPickerPanelId,
+    historyPanelPickerPanelId,
+    setHistoryPanelPickerPanelId,
     aiDataPanel,
     setAIDataPanel,
     isEpisodeBatchSubmitting,

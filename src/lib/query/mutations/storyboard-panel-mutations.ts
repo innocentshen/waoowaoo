@@ -49,6 +49,21 @@ export function useRegenerateProjectPanelImage(projectId: string) {
                 targetId: panelId,
             })
         },
+        onSuccess: (data, { panelId }) => {
+            const result = (data || {}) as { async?: boolean; taskId?: string; status?: string }
+            const taskId = typeof result.taskId === 'string' ? result.taskId.trim() : ''
+            if (!result.async || !taskId) return
+
+            upsertTaskTargetOverlay(queryClient, {
+                projectId,
+                targetType: 'NovelPromotionPanel',
+                targetId: panelId,
+                phase: result.status === 'processing' ? 'processing' : 'queued',
+                runningTaskId: taskId,
+                runningTaskType: 'image_panel',
+                intent: 'regenerate',
+            })
+        },
         onSettled: () => {
             invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
         },

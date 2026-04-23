@@ -1,5 +1,9 @@
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
 import { createScopedLogger } from '@/lib/logging/core'
+import {
+  parsePanelImageHistory,
+  serializePanelImageHistory,
+} from '@/lib/novel-promotion/panel-image-history'
 import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import { getSignedUrl } from '@/lib/storage'
 
@@ -144,16 +148,12 @@ export function addSignedUrlsToStoryboard(storyboard: StoryboardLike) {
   let panels: PanelLike[] = []
   if (storyboard.panels && Array.isArray(storyboard.panels)) {
     panels = storyboard.panels.map((dbPanel) => {
-      let panelHistoryCount = 0
       const historyField = dbPanel.panelImageHistory || dbPanel.imageHistory
-      if (historyField) {
-        try {
-          const history = JSON.parse(historyField)
-          panelHistoryCount = Array.isArray(history) ? history.length : 0
-        } catch {
-          panelHistoryCount = 0
-        }
-      }
+      const signedHistoryEntries = parsePanelImageHistory(historyField).map((entry) => ({
+        ...entry,
+        url: keyToSignedUrl(entry.url) || entry.url,
+      }))
+      const signedHistory = serializePanelImageHistory(signedHistoryEntries)
 
       let signedCandidateImages = dbPanel.candidateImages
       if (signedCandidateImages) {
@@ -191,7 +191,9 @@ export function addSignedUrlsToStoryboard(storyboard: StoryboardLike) {
           ? getSignedUrl(dbPanel.lipSyncVideoUrl, 7200)
           : dbPanel.lipSyncVideoUrl,
         candidateImages: signedCandidateImages,
-        historyCount: panelHistoryCount,
+        imageHistory: signedHistory,
+        panelImageHistory: dbPanel.panelImageHistory ? signedHistory : dbPanel.panelImageHistory,
+        historyCount: signedHistoryEntries.length,
       }
     })
   }

@@ -31,6 +31,8 @@ export interface StoryboardGroupProps {
   uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   submittingPanelImageIds: Set<string>
+  cancelablePanelImageTaskIds: Set<string>
+  cancelingPanelImageIds: Set<string>
 
   onToggleExpand: () => void
   onMoveUp: () => void
@@ -52,8 +54,10 @@ export interface StoryboardGroupProps {
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onUploadPanelImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: (panelId: string) => void
+  onOpenHistoryPanelPicker: (panelId: string) => void
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
   getPanelCandidates: (panel: NovelPromotionPanel) => { candidates: string[]; selectedIndex: number } | null

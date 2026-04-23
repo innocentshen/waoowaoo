@@ -2,6 +2,10 @@
 
 import type { Storyboard } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 import type { VoiceLine } from './types'
+import {
+  NOVEL_PROMOTION_PANEL_LIP_SYNC_TASK_TYPES,
+  NOVEL_PROMOTION_PANEL_VIDEO_TASK_TYPES,
+} from '@/lib/novel-promotion/panel-task-types'
 
 interface VideoTaskTarget {
   key: string
@@ -30,7 +34,7 @@ export function buildPanelVideoTargets(storyboards: Storyboard[]): VideoTaskTarg
         key: `panel-video:${panel.id}`,
         targetType: 'NovelPromotionPanel',
         targetId: panel.id,
-        types: ['video_panel'],
+        types: [...NOVEL_PROMOTION_PANEL_VIDEO_TASK_TYPES],
         resource: 'video',
         hasOutput: !!panel.videoUrl,
       })
@@ -48,7 +52,7 @@ export function buildPanelLipTargets(storyboards: Storyboard[]): VideoTaskTarget
         key: `panel-lip:${panel.id}`,
         targetType: 'NovelPromotionPanel',
         targetId: panel.id,
-        types: ['lip_sync'],
+        types: [...NOVEL_PROMOTION_PANEL_LIP_SYNC_TASK_TYPES],
         resource: 'video',
         hasOutput: !!panel.lipSyncVideoUrl,
       })

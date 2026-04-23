@@ -1,4 +1,8 @@
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
+import {
+  parsePanelImageHistory,
+  serializePanelImageHistory,
+} from '@/lib/novel-promotion/panel-image-history'
 import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from './service'
 import type { MediaRef } from './types'
@@ -97,6 +101,15 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
   const lipSyncVideoMedia = await resolveMediaRef(panel.lipSyncVideoMediaId, panel.lipSyncVideoUrl)
   const sketchImageMedia = await resolveMediaRef(panel.sketchImageMediaId, panel.sketchImageUrl)
   const previousImageMedia = await resolveMediaRef(panel.previousImageMediaId, panel.previousImageUrl)
+  const historyEntries = await Promise.all(
+    parsePanelImageHistory(panel.imageHistory).map(async (entry) => {
+      const media = await resolveMediaRefFromLegacyValue(entry.url)
+      return {
+        ...entry,
+        url: media?.url || entry.url,
+      }
+    }),
+  )
 
   const candidateRaw = parseStringArray(panel.candidateImages)
   const candidateMediaUrls: string[] = []
@@ -137,6 +150,7 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
     sketchImageUrl: sketchImageMedia?.url || panel.sketchImageUrl || null,
     previousImageUrl: previousImageMedia?.url || panel.previousImageUrl || null,
     candidateImages: candidateRaw.length > 0 ? JSON.stringify(candidateMediaUrls) : panel.candidateImages,
+    imageHistory: serializePanelImageHistory(historyEntries),
     videoCandidates,
   }
 }

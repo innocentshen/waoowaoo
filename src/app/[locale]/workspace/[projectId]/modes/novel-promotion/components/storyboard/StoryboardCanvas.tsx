@@ -31,6 +31,8 @@ interface StoryboardCanvasProps {
   uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   submittingPanelImageIds: Set<string>
+  cancelablePanelImageTaskIds: Set<string>
+  cancelingPanelImageIds: Set<string>
   movingClipId: string | null
   insertingAfterPanelId: string | null
   submittingVariantPanelId: string | null
@@ -62,8 +64,10 @@ interface StoryboardCanvasProps {
   onRemoveLocation: (panel: StoryboardPanel, storyboardId: string) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onUploadPanelImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: (panelId: string) => void
+  onOpenHistoryPanelPicker: (panelId: string) => void
   onOpenEditModal: (storyboardId: string, panelIndex: number) => void
   onOpenAIDataModal: (storyboardId: string, panelIndex: number) => void
   getPanelCandidates: (panel: NovelPromotionPanel) => { candidates: string[]; selectedIndex: number } | null
@@ -104,6 +108,8 @@ function areStoryboardCanvasPropsEqual(previous: StoryboardCanvasProps, next: St
     previous.uploadingPanels === next.uploadingPanels &&
     previous.modifyingPanels === next.modifyingPanels &&
     previous.submittingPanelImageIds === next.submittingPanelImageIds &&
+    previous.cancelablePanelImageTaskIds === next.cancelablePanelImageTaskIds &&
+    previous.cancelingPanelImageIds === next.cancelingPanelImageIds &&
     previous.movingClipId === next.movingClipId &&
     previous.insertingAfterPanelId === next.insertingAfterPanelId &&
     previous.submittingVariantPanelId === next.submittingVariantPanelId &&
@@ -138,6 +144,8 @@ function StoryboardCanvas({
   uploadingPanels,
   modifyingPanels,
   submittingPanelImageIds,
+  cancelablePanelImageTaskIds,
+  cancelingPanelImageIds,
   movingClipId,
   insertingAfterPanelId,
   submittingVariantPanelId,
@@ -165,8 +173,10 @@ function StoryboardCanvas({
   onRemoveLocation,
   onRetryPanelSave,
   onRegeneratePanelImage,
+  onCancelPanelImageTask,
   onUploadPanelImage,
   onOpenSourcePanelPicker,
+  onOpenHistoryPanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   getPanelCandidates,
@@ -229,6 +239,8 @@ function StoryboardCanvas({
               uploadingPanels={uploadingPanels}
               modifyingPanels={modifyingPanels}
               submittingPanelImageIds={submittingPanelImageIds}
+              cancelablePanelImageTaskIds={cancelablePanelImageTaskIds}
+              cancelingPanelImageIds={cancelingPanelImageIds}
               onToggleExpand={() => onToggleExpandedClip(storyboard.id)}
               onMoveUp={() => onMoveStoryboardGroup(storyboard.clipId, 'up')}
               onMoveDown={() => onMoveStoryboardGroup(storyboard.clipId, 'down')}
@@ -249,8 +261,10 @@ function StoryboardCanvas({
               onRemoveLocation={(panel) => onRemoveLocation(panel, storyboard.id)}
               onRetryPanelSave={onRetryPanelSave}
               onRegeneratePanelImage={onRegeneratePanelImage}
+              onCancelPanelImageTask={onCancelPanelImageTask}
               onUploadPanelImage={onUploadPanelImage}
               onOpenSourcePanelPicker={onOpenSourcePanelPicker}
+              onOpenHistoryPanelPicker={onOpenHistoryPanelPicker}
               onOpenEditModal={(panelIndex) => onOpenEditModal(storyboard.id, panelIndex)}
               onOpenAIDataModal={(panelIndex) => onOpenAIDataModal(storyboard.id, panelIndex)}
               getPanelCandidates={getPanelCandidates}

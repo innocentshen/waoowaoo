@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { useRef, type ChangeEvent } from 'react'
 import { useTranslations } from 'next-intl'
@@ -10,17 +11,23 @@ import { AI_EDIT_BUTTON_CLASS, AI_EDIT_ICON_CLASS } from '@/components/ui/ai-edi
 import AISparklesIcon from '@/components/ui/icons/AISparklesIcon'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
+import { parsePanelImageHistory } from '@/lib/novel-promotion/panel-image-history'
 
 interface ImageSectionActionButtonsProps {
   panelId: string
   imageUrl: string | null
+  imageHistory?: string | null
   previousImageUrl?: string | null
   isSubmittingPanelImageTask: boolean
+  canCancelPanelImageTask: boolean
+  isCancelingPanelImageTask: boolean
   isUploading: boolean
   isModifying: boolean
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onUploadImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: () => void
+  onOpenHistoryPanelPicker: () => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onUndo?: (panelId: string) => void
@@ -30,13 +37,18 @@ interface ImageSectionActionButtonsProps {
 export default function ImageSectionActionButtons({
   panelId,
   imageUrl,
+  imageHistory,
   previousImageUrl,
   isSubmittingPanelImageTask,
+  canCancelPanelImageTask,
+  isCancelingPanelImageTask,
   isUploading,
   isModifying,
   onRegeneratePanelImage,
+  onCancelPanelImageTask,
   onUploadImage,
   onOpenSourcePanelPicker,
+  onOpenHistoryPanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   onUndo,
@@ -45,6 +57,7 @@ export default function ImageSectionActionButtons({
   const t = useTranslations('storyboard')
   const { count, setCount } = useImageGenerationCount('storyboard-candidates')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const historyCount = parsePanelImageHistory(imageHistory).length
   const uploadPendingState = isUploading
     ? resolveTaskPresentationState({
       phase: 'processing',
@@ -55,13 +68,18 @@ export default function ImageSectionActionButtons({
     : null
 
   const handleTriggerUpload = () => {
-    if (isUploading || isSubmittingPanelImageTask || isModifying) return
+    if (isUploading || isSubmittingPanelImageTask || isModifying || isCancelingPanelImageTask) return
     fileInputRef.current?.click()
   }
 
   const handleOpenSourcePanelPicker = () => {
-    if (isUploading || isSubmittingPanelImageTask || isModifying) return
+    if (isUploading || isSubmittingPanelImageTask || isModifying || isCancelingPanelImageTask) return
     onOpenSourcePanelPicker()
+  }
+
+  const handleOpenHistoryPanelPicker = () => {
+    if (historyCount === 0 || isUploading || isSubmittingPanelImageTask || isModifying || isCancelingPanelImageTask) return
+    onOpenHistoryPanelPicker()
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +106,7 @@ export default function ImageSectionActionButtons({
           <div className="flex items-center gap-0.5">
             <button
               onClick={handleTriggerUpload}
-              disabled={isSubmittingPanelImageTask || isModifying || isUploading}
+              disabled={isSubmittingPanelImageTask || isModifying || isUploading || isCancelingPanelImageTask}
               className="glass-btn-base glass-btn-secondary flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 disabled:opacity-50"
               title={imageUrl ? t('image.uploadReplace') : t('image.upload')}
             >
@@ -102,13 +120,26 @@ export default function ImageSectionActionButtons({
 
             <button
               onClick={handleOpenSourcePanelPicker}
-              disabled={isSubmittingPanelImageTask || isModifying || isUploading}
+              disabled={isSubmittingPanelImageTask || isModifying || isUploading || isCancelingPanelImageTask}
               className="glass-btn-base glass-btn-secondary flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 disabled:opacity-50"
               title={t('image.chooseShot')}
             >
               <AppIcon name="copy" className="w-2.5 h-2.5" />
               <span>{t('image.chooseShot')}</span>
             </button>
+
+            {historyCount > 0 && (
+              <button
+                onClick={handleOpenHistoryPanelPicker}
+                disabled={isSubmittingPanelImageTask || isModifying || isUploading || isCancelingPanelImageTask}
+                className="glass-btn-base glass-btn-secondary flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 disabled:opacity-50"
+                title={t('image.historyTitle')}
+              >
+                <AppIcon name="clock" className="w-2.5 h-2.5" />
+                <span>{t('image.history')}</span>
+                <span className="opacity-70">{historyCount}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -134,7 +165,7 @@ export default function ImageSectionActionButtons({
                 triggerPulse()
                 onRegeneratePanelImage(panelId, count, isSubmittingPanelImageTask)
               }}
-              disabled={isUploading}
+              disabled={isUploading || isCancelingPanelImageTask}
               ariaLabel={t('image.selectCount')}
               className={`glass-btn-base glass-btn-secondary flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 ${isSubmittingPanelImageTask || isUploading ? 'opacity-75' : ''}`}
               selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-[10px] font-semibold text-[var(--glass-text-primary)] outline-none cursor-pointer leading-none transition-colors"
@@ -149,6 +180,29 @@ export default function ImageSectionActionButtons({
               <AppIcon name="chart" className="w-2.5 h-2.5" />
               <span>{t('aiData.viewData')}</span>
             </button>
+
+            {isSubmittingPanelImageTask && canCancelPanelImageTask && (
+              <button
+                onClick={() => {
+                  void onCancelPanelImageTask(panelId)
+                }}
+                disabled={isCancelingPanelImageTask || isUploading || isModifying}
+                className="glass-btn-base glass-btn-danger flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 disabled:opacity-50"
+                title={t('image.terminate')}
+              >
+                {isCancelingPanelImageTask ? (
+                  <>
+                    <AppIcon name="loader" className="w-2.5 h-2.5 animate-spin" />
+                    <span>{t('image.terminating')}</span>
+                  </>
+                ) : (
+                  <>
+                    <AppIcon name="closeMd" className="w-2.5 h-2.5" />
+                    <span>{t('image.terminate')}</span>
+                  </>
+                )}
+              </button>
+            )}
             {imageUrl && (
               <button
                 onClick={onOpenEditModal}

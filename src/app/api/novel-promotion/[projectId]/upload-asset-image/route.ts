@@ -6,6 +6,10 @@ import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { requireProjectAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import {
+  moveUrlsIntoPanelImageHistory,
+  parseStringArrayJson,
+} from '@/lib/novel-promotion/panel-image-history'
 
 interface CharacterAppearanceRecord {
   id: string
@@ -88,6 +92,8 @@ export const POST = apiHandler(async (
         imageMediaId: true,
         previousImageUrl: true,
         previousImageMediaId: true,
+        candidateImages: true,
+        imageHistory: true,
       },
     })
 
@@ -111,6 +117,11 @@ export const POST = apiHandler(async (
         imageUrl: key,
         imageMediaId: null,
         candidateImages: null,
+        imageHistory: moveUrlsIntoPanelImageHistory({
+          rawHistory: panel.imageHistory,
+          currentImageUrl: panel.imageUrl,
+          extraUrls: parseStringArrayJson(panel.candidateImages).filter((candidate) => !candidate.startsWith('PENDING:')),
+        }).serialized,
       },
     })
 

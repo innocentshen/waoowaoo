@@ -5,11 +5,10 @@ import { getSignedUrl, generateUniqueKey, downloadAndUploadImage, toFetchableUrl
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-
-interface PanelHistoryEntry {
-  url: string
-  timestamp: string
-}
+import {
+  moveUrlsIntoPanelImageHistory,
+  parseStringArrayJson,
+} from '@/lib/novel-promotion/panel-image-history'
 
 function parseUnknownArray(jsonValue: string | null): unknown[] {
   if (!jsonValue) return []
@@ -21,20 +20,12 @@ function parseUnknownArray(jsonValue: string | null): unknown[] {
   }
 }
 
-function parsePanelHistory(jsonValue: string | null): PanelHistoryEntry[] {
-  return parseUnknownArray(jsonValue).filter((entry): entry is PanelHistoryEntry => {
-    if (!entry || typeof entry !== 'object') return false
-    const candidate = entry as { url?: unknown; timestamp?: unknown }
-    return typeof candidate.url === 'string' && typeof candidate.timestamp === 'string'
-  })
-}
-
 /**
  * POST /api/novel-promotion/[projectId]/panel/select-candidate
- * 统一的候选图片操作 API
- * 
- * action: 'select' - 选择候选图片作为最终图片
- * action: 'cancel' - 取消选择，清空候选列表
+ * 缁熶竴鐨勫€欓€夊浘鐗囨搷浣?API
+ *
+ * action: 'select' - 閫夋嫨鍊欓€夊浘鐗囦綔涓烘渶缁堝浘鐗?
+ * action: 'cancel' - 鍙栨秷閫夋嫨锛屾竻绌哄€欓€夊垪琛?
  */
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -42,7 +33,6 @@ export const POST = apiHandler(async (
 ) => {
   const { projectId } = await context.params
 
-  // 🔐 统一权限验证
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
@@ -53,25 +43,45 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  // === 取消操作 ===
   if (action === 'cancel') {
-    await prisma.novelPromotionPanel.update({
+    const panel = await prisma.novelPromotionPanel.findUnique({
       where: { id: panelId },
-      data: { candidateImages: null }
+      select: {
+        id: true,
+        imageUrl: true,
+        candidateImages: true,
+        imageHistory: true,
+      },
+    })
+
+    if (!panel) {
+      throw new ApiError('NOT_FOUND')
+    }
+
+    const nextHistory = moveUrlsIntoPanelImageHistory({
+      rawHistory: panel.imageHistory,
+      nextImageUrl: panel.imageUrl,
+      extraUrls: parseStringArrayJson(panel.candidateImages).filter((candidate) => !candidate.startsWith('PENDING:')),
+    })
+
+    await prisma.novelPromotionPanel.update({
+      where: { id: panel.id },
+      data: {
+        candidateImages: null,
+        imageHistory: nextHistory.serialized,
+      },
     })
 
     return NextResponse.json({
       success: true,
-      message: '已取消选择'
+      message: '宸插彇娑堥€夋嫨'
     })
   }
 
-  // === 选择操作 ===
   if (!selectedImageUrl) {
     throw new ApiError('INVALID_PARAMS')
   }
 
-  // 获取 Panel
   const panel = await prisma.novelPromotionPanel.findUnique({
     where: { id: panelId }
   })
@@ -80,31 +90,23 @@ export const POST = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
 
-  // 验证选择的图片是否在候选列表中
   const candidateImages = parseUnknownArray(panel.candidateImages)
-
   const selectedCosKey = await resolveStorageKeyFromMediaValue(selectedImageUrl)
-  const candidateKeys = (await Promise.all(candidateImages.map((candidate: unknown) => resolveStorageKeyFromMediaValue(candidate))))
-    .filter((k): k is string => !!k)
+  const candidateRecords = (await Promise.all(candidateImages.map(async (candidate: unknown) => ({
+    raw: typeof candidate === 'string' ? candidate : '',
+    key: await resolveStorageKeyFromMediaValue(candidate),
+  }))))
+    .filter((candidate): candidate is { raw: string; key: string } => !!candidate.raw && !!candidate.key)
+  const candidateKeys = candidateRecords.map((candidate) => candidate.key)
   const isValidCandidate = !!selectedCosKey && candidateKeys.includes(selectedCosKey)
 
   if (!isValidCandidate) {
     _ulogInfo(
-      `[select-candidate] 选择失败: selectedCosKey=${selectedCosKey}, candidateKeys=${JSON.stringify(candidateKeys)}, candidateImages=${JSON.stringify(candidateImages)}`,
+      `[select-candidate] 閫夋嫨澶辫触: selectedCosKey=${selectedCosKey}, candidateKeys=${JSON.stringify(candidateKeys)}, candidateImages=${JSON.stringify(candidateImages)}`,
     )
     throw new ApiError('INVALID_PARAMS')
   }
 
-  // 保存当前图片到历史记录
-  const currentHistory = parsePanelHistory(panel.imageHistory)
-  if (panel.imageUrl) {
-    currentHistory.push({
-      url: panel.imageUrl,
-      timestamp: new Date().toISOString()
-    })
-  }
-
-  // 选择候选图时优先复用已存在的 COS key，避免重复下载上传（也避免 /m/* 相对URL被 Node fetch 解析失败）
   let finalImageKey = selectedCosKey as string
   const isReusableKey = !finalImageKey.startsWith('http://') && !finalImageKey.startsWith('https://') && !finalImageKey.startsWith('/')
 
@@ -115,13 +117,20 @@ export const POST = apiHandler(async (
   }
 
   const signedUrl = getSignedUrl(finalImageKey, 7 * 24 * 3600)
+  const nextHistory = moveUrlsIntoPanelImageHistory({
+    rawHistory: panel.imageHistory,
+    currentImageUrl: panel.imageUrl,
+    nextImageUrl: finalImageKey,
+    extraUrls: candidateRecords
+      .filter((candidate) => candidate.key !== selectedCosKey)
+      .map((candidate) => candidate.raw),
+  })
 
-  // 更新 Panel：设置新图片，清空候选列表
   await prisma.novelPromotionPanel.update({
     where: { id: panelId },
     data: {
       imageUrl: finalImageKey,
-      imageHistory: JSON.stringify(currentHistory),
+      imageHistory: nextHistory.serialized,
       candidateImages: null
     }
   })
@@ -130,6 +139,6 @@ export const POST = apiHandler(async (
     success: true,
     imageUrl: signedUrl,
     cosKey: finalImageKey,
-    message: '已选择图片'
+    message: '宸查€夋嫨鍥剧墖'
   })
 })

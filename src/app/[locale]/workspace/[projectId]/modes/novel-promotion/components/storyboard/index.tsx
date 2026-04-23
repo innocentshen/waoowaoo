@@ -8,6 +8,7 @@ import ImageEditModal from './ImageEditModal'
 import AIDataModal from './AIDataModal'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import SelectStoryboardPanelImageModal, { type StoryboardSourceOptionGroup } from './SelectStoryboardPanelImageModal'
+import SelectPanelHistoryImageModal from './SelectPanelHistoryImageModal'
 import StoryboardStageShell from './StoryboardStageShell'
 import StoryboardToolbar from './StoryboardToolbar'
 import StoryboardCanvas from './StoryboardCanvas'
@@ -106,24 +107,32 @@ export default function StoryboardStage({
     setEditingPanel,
     uploadingPanels,
     modifyingPanels,
+    cancelablePanelImageTaskIds,
+    cancelingPanelImageIds,
+    isCancelingAllPanelImageTasks,
     isDownloadingImages,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
     uploadPanelImage,
     selectPanelSourceImage,
+    selectPanelHistoryImage,
     regenerateAllPanelsIndividually,
     selectPanelCandidate,
     selectPanelCandidateIndex,
     cancelPanelCandidate,
     getPanelCandidates,
     downloadAllImages,
+    cancelPanelImageTask,
+    cancelAllRunningPanelImageTasks,
     clearStoryboardError,
 
     assetPickerPanel,
     setAssetPickerPanel,
     sourcePanelPickerPanelId,
     setSourcePanelPickerPanelId,
+    historyPanelPickerPanelId,
+    setHistoryPanelPickerPanelId,
     aiDataPanel,
     setAIDataPanel,
     isEpisodeBatchSubmitting,
@@ -200,6 +209,18 @@ export default function StoryboardStage({
     sortedStoryboards,
   ])
 
+  const historyPickerPanel = useMemo(() => {
+    if (!historyPanelPickerPanelId) return null
+
+    for (const storyboard of localStoryboards) {
+      const panels = Array.isArray(storyboard.panels) ? storyboard.panels : []
+      const matched = panels.find((panel) => panel.id === historyPanelPickerPanelId)
+      if (matched) return matched
+    }
+
+    return null
+  }, [historyPanelPickerPanelId, localStoryboards])
+
   return (
       <StoryboardStageShell
         isTransitioning={isTransitioning}
@@ -212,12 +233,15 @@ export default function StoryboardStage({
           totalPanels={totalPanels}
           isDownloadingImages={isDownloadingImages}
           runningCount={runningCount}
+          cancelableRunningCount={cancelablePanelImageTaskIds.size}
           pendingPanelCount={pendingPanelCount}
           isBatchSubmitting={isEpisodeBatchSubmitting}
+          isCancelingAllPanelImageTasks={isCancelingAllPanelImageTasks}
           addingStoryboardGroup={addingStoryboardGroup}
           addingStoryboardGroupState={addingStoryboardGroupState}
           onDownloadAllImages={downloadAllImages}
           onGenerateAllPanels={handleGenerateAllPanels}
+          onCancelAllRunningPanels={cancelAllRunningPanelImageTasks}
           onAddStoryboardGroupAtStart={() => addStoryboardGroup(0)}
           onBack={onBack}
         />
@@ -242,6 +266,8 @@ export default function StoryboardStage({
           uploadingPanels={uploadingPanels}
           modifyingPanels={modifyingPanels}
           submittingPanelImageIds={submittingPanelImageIds}
+          cancelablePanelImageTaskIds={cancelablePanelImageTaskIds}
+          cancelingPanelImageIds={cancelingPanelImageIds}
 
           movingClipId={movingClipId}
           insertingAfterPanelId={insertingAfterPanelId}
@@ -270,8 +296,10 @@ export default function StoryboardStage({
           onRemoveLocation={handleRemoveLocation}
           onRetryPanelSave={retrySave}
           onRegeneratePanelImage={regeneratePanelImage}
+          onCancelPanelImageTask={cancelPanelImageTask}
           onUploadPanelImage={uploadPanelImage}
           onOpenSourcePanelPicker={setSourcePanelPickerPanelId}
+          onOpenHistoryPanelPicker={setHistoryPanelPickerPanelId}
           onOpenEditModal={(storyboardId, panelIndex) => setEditingPanel({ storyboardId, panelIndex })}
           onOpenAIDataModal={(storyboardId, panelIndex) => setAIDataPanel({ storyboardId, panelIndex })}
           getPanelCandidates={getPanelCandidates}
@@ -331,6 +359,23 @@ export default function StoryboardStage({
               const success = await selectPanelSourceImage(sourcePanelPickerPanelId, sourcePanelId)
               if (success) {
                 setSourcePanelPickerPanelId(null)
+              }
+            }}
+          />
+        )}
+
+        {historyPanelPickerPanelId && (
+          <SelectPanelHistoryImageModal
+            open={!!historyPanelPickerPanelId}
+            imageHistory={historyPickerPanel?.imageHistory}
+            currentImageUrl={historyPickerPanel?.imageUrl}
+            videoRatio={videoRatio}
+            onClose={() => setHistoryPanelPickerPanelId(null)}
+            onSelect={async (selectedImageUrl) => {
+              if (!historyPanelPickerPanelId) return
+              const success = await selectPanelHistoryImage(historyPanelPickerPanelId, selectedImageUrl)
+              if (success) {
+                setHistoryPanelPickerPanelId(null)
               }
             }}
           />

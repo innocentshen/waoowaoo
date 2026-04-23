@@ -2,7 +2,7 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { apiFetch } from '@/lib/api-fetch'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
@@ -139,14 +139,7 @@ export default function ProjectDetailPage() {
   // 零状态：无剧集且非导入中 → 自动创建第一集
   const isZeroState = episodes.length === 0
   const shouldShowImportWizard = importStatus === 'pending' // 仅分集预览中才显示 wizard
-  const shouldAutoCreateEpisode = isZeroState && importStatus !== 'pending'
-  const autoCreateTriggered = useRef(false)
-
-  useEffect(() => {
-    if (!shouldAutoCreateEpisode || autoCreateTriggered.current || loading) return
-    autoCreateTriggered.current = true
-    void handleCreateEpisode(`${t('episode')} 1`)
-  }, [shouldAutoCreateEpisode, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shouldShowEmptyEpisodeState = isZeroState && importStatus !== 'pending' && !isGlobalAssetsView
 
   const shouldGateImportWizardByModel = shouldShowImportWizard && !isGlobalAssetsView
 
@@ -232,6 +225,9 @@ export default function ProjectDetailPage() {
 
       // 刷新后重新获取最新的剧集列表
       const res = await apiFetch(`/api/projects/${projectId}/data`)
+      if (!res.ok) {
+        throw new Error(await readApiErrorMessage(res, t('refreshFailed')))
+      }
       const data = await res.json()
       // API 返回结构是 { project: { novelPromotionData: { episodes: [...] } } }
       const newEpisodes = data?.project?.novelPromotionData?.episodes || []
@@ -506,6 +502,26 @@ export default function ProjectDetailPage() {
                 importStatus={importStatus}
               />
             )
+          ) : shouldShowEmptyEpisodeState ? (
+            <div className="glass-surface p-8 text-center max-w-2xl mx-auto">
+              <div className="mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]">
+                <AppIcon name="monitor" className="w-5 h-5" />
+              </div>
+              <h2 className="text-xl font-semibold text-[var(--glass-text-primary)] mb-2">{t('sidebar.empty')}</h2>
+              <p className="text-[var(--glass-text-secondary)] mb-6">{project.name}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleCreateEpisode(`${t('episode')} 1`).catch((err) => {
+                    _ulogError('[ProjectDetail] 创建首个剧集失败:', err)
+                    alert(err instanceof Error ? err.message : t('createFailed'))
+                  })
+                }}
+                className="glass-btn-base glass-btn-primary px-6 py-2"
+              >
+                {t('sidebar.create')} {t('episode')} 1
+              </button>
+            </div>
           ) : selectedEpisodeId && currentEpisode ? (
             // 剧集工作区（确保所有数据都准备好）
             <NovelPromotionWorkspace

@@ -8,6 +8,10 @@ import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolvePanelVideoCandidates } from '@/lib/novel-promotion/video-candidates'
 import {
+  parsePanelImageHistory,
+  parseStringArrayJson,
+} from '@/lib/novel-promotion/panel-image-history'
+import {
   collectProjectBailianManagedVoiceIds,
   cleanupUnreferencedBailianVoices,
 } from '@/lib/providers/bailian'
@@ -173,6 +177,19 @@ async function collectProjectCOSKeys(projectId: string): Promise<string[]> {
       for (const panel of storyboard.panels) {
         const imgKey = await resolveStorageKeyFromMediaValue(panel.imageUrl)
         if (imgKey) keys.push(imgKey)
+
+        const previousImgKey = await resolveStorageKeyFromMediaValue(panel.previousImageUrl)
+        if (previousImgKey) keys.push(previousImgKey)
+
+        for (const candidateImage of parseStringArrayJson(panel.candidateImages).filter((candidate) => !candidate.startsWith('PENDING:'))) {
+          const candidateImageKey = await resolveStorageKeyFromMediaValue(candidateImage)
+          if (candidateImageKey) keys.push(candidateImageKey)
+        }
+
+        for (const historyEntry of parsePanelImageHistory(panel.imageHistory)) {
+          const historyKey = await resolveStorageKeyFromMediaValue(historyEntry.url)
+          if (historyKey) keys.push(historyKey)
+        }
 
         const videoKey = await resolveStorageKeyFromMediaValue(panel.videoUrl)
         if (videoKey) keys.push(videoKey)

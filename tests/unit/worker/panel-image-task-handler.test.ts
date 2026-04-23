@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import { parsePanelImageHistory } from '@/lib/novel-promotion/panel-image-history'
 
 const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
@@ -97,6 +98,8 @@ function buildJob(payload: Record<string, unknown>, targetId = 'panel-1'): Job<T
 describe('worker panel-image-task-handler behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-23T10:00:00.000Z'))
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
@@ -114,6 +117,8 @@ describe('worker panel-image-task-handler behavior', () => {
       actingNotes: null,
       sketchImageUrl: null,
       imageUrl: null,
+      candidateImages: null,
+      imageHistory: null,
     })
 
     utilsMock.resolveImageSourceFromGeneration
@@ -123,6 +128,10 @@ describe('worker panel-image-task-handler behavior', () => {
     utilsMock.uploadImageSourceToCos
       .mockResolvedValueOnce('cos/panel-candidate-1.png')
       .mockResolvedValueOnce('cos/panel-candidate-2.png')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('missing panelId -> explicit error', async () => {
@@ -168,6 +177,7 @@ describe('worker panel-image-task-handler behavior', () => {
       data: {
         imageUrl: 'cos/panel-candidate-1.png',
         candidateImages: JSON.stringify(['cos/panel-candidate-1.png', 'cos/panel-candidate-2.png']),
+        imageHistory: null,
       },
     })
   })
@@ -192,6 +202,8 @@ describe('worker panel-image-task-handler behavior', () => {
       actingNotes: null,
       sketchImageUrl: null,
       imageUrl: 'cos/panel-old.png',
+      candidateImages: null,
+      imageHistory: null,
     })
 
     utilsMock.resolveImageSourceFromGeneration.mockResolvedValueOnce('generated-source-regen')
@@ -211,7 +223,49 @@ describe('worker panel-image-task-handler behavior', () => {
       data: {
         previousImageUrl: 'cos/panel-old.png',
         candidateImages: JSON.stringify(['cos/panel-regenerated.png']),
+        imageHistory: null,
       },
     })
+  })
+
+  it('preserves overwritten candidate images in history when regenerating again', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce({
+      id: 'panel-1',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      shotType: 'close-up',
+      cameraMove: 'static',
+      description: 'hero close-up',
+      imagePrompt: null,
+      videoPrompt: 'dramatic',
+      location: 'Old Town',
+      characters: '[]',
+      srtSegment: null,
+      photographyRules: null,
+      actingNotes: null,
+      sketchImageUrl: null,
+      imageUrl: 'cos/panel-current.png',
+      candidateImages: JSON.stringify(['cos/stale-candidate.png', 'PENDING:2']),
+      imageHistory: null,
+    })
+
+    utilsMock.resolveImageSourceFromGeneration.mockReset()
+    utilsMock.uploadImageSourceToCos.mockReset()
+    utilsMock.resolveImageSourceFromGeneration.mockResolvedValueOnce('generated-source-regen')
+    utilsMock.uploadImageSourceToCos.mockResolvedValueOnce('cos/panel-next.png')
+
+    await handlePanelImageTask(buildJob({ candidateCount: 1 }))
+
+    const updateCall = prismaMock.novelPromotionPanel.update.mock.calls.at(-1) as unknown[] | undefined
+    expect(updateCall).toBeDefined()
+    const updateArgs = updateCall?.[0] as {
+      data: { imageHistory: string | null }
+    }
+    expect(parsePanelImageHistory(updateArgs.data.imageHistory)).toEqual([
+      {
+        url: 'cos/stale-candidate.png',
+        timestamp: '2026-04-23T10:00:00.000Z',
+      },
+    ])
   })
 })

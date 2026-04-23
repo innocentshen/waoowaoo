@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef } from '@/lib/media/service'
+import {
+  moveUrlsIntoPanelImageHistory,
+  parseStringArrayJson,
+} from '@/lib/novel-promotion/panel-image-history'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -42,6 +46,8 @@ export const POST = apiHandler(async (
         imageMediaId: true,
         previousImageUrl: true,
         previousImageMediaId: true,
+        candidateImages: true,
+        imageHistory: true,
       },
     }),
     prisma.novelPromotionPanel.findFirst({
@@ -73,6 +79,12 @@ export const POST = apiHandler(async (
       imageUrl: sourcePanel.imageUrl || null,
       imageMediaId: sourcePanel.imageMediaId || null,
       candidateImages: null,
+      imageHistory: moveUrlsIntoPanelImageHistory({
+        rawHistory: targetPanel.imageHistory,
+        currentImageUrl: targetPanel.imageUrl,
+        nextImageUrl: sourcePanel.imageUrl || null,
+        extraUrls: parseStringArrayJson(targetPanel.candidateImages).filter((candidate) => !candidate.startsWith('PENDING:')),
+      }).serialized,
     },
   })
 

@@ -42,6 +42,8 @@ function areStoryboardGroupPropsEqual(previous: StoryboardGroupProps, next: Stor
     previous.uploadingPanels !== next.uploadingPanels ||
     previous.modifyingPanels !== next.modifyingPanels ||
     previous.submittingPanelImageIds !== next.submittingPanelImageIds ||
+    previous.cancelablePanelImageTaskIds !== next.cancelablePanelImageTaskIds ||
+    previous.cancelingPanelImageIds !== next.cancelingPanelImageIds ||
     previous.movingClipId !== next.movingClipId ||
     previous.insertingAfterPanelId !== next.insertingAfterPanelId ||
     previous.projectId !== next.projectId ||
@@ -90,6 +92,8 @@ function StoryboardGroup({
   uploadingPanels,
   modifyingPanels,
   submittingPanelImageIds,
+  cancelablePanelImageTaskIds,
+  cancelingPanelImageIds,
   onToggleExpand,
   onMoveUp,
   onMoveDown,
@@ -110,8 +114,10 @@ function StoryboardGroup({
   onRemoveLocation,
   onRetryPanelSave,
   onRegeneratePanelImage,
+  onCancelPanelImageTask,
   onUploadPanelImage,
   onOpenSourcePanelPicker,
+  onOpenHistoryPanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   getPanelCandidates,
@@ -277,6 +283,8 @@ function StoryboardGroup({
         uploadingPanels={uploadingPanels}
         modifyingPanels={modifyingPanels}
         panelTaskErrorMap={panelTaskErrorMap}
+        cancelablePanelImageTaskIds={cancelablePanelImageTaskIds}
+        cancelingPanelImageIds={cancelingPanelImageIds}
         isPanelTaskRunning={isPanelTaskRunning}
         getPanelEditData={getPanelEditData}
         getPanelCandidates={getPanelCandidates}
@@ -288,8 +296,10 @@ function StoryboardGroup({
         onRemoveLocation={onRemoveLocation}
         onRetryPanelSave={onRetryPanelSave}
         onRegeneratePanelImage={handleRegeneratePanelImage}
+        onCancelPanelImageTask={onCancelPanelImageTask}
         onUploadPanelImage={onUploadPanelImage}
         onOpenSourcePanelPicker={onOpenSourcePanelPicker}
+        onOpenHistoryPanelPicker={onOpenHistoryPanelPicker}
         onOpenEditModal={onOpenEditModal}
         onOpenAIDataModal={onOpenAIDataModal}
         onSelectPanelCandidateIndex={onSelectPanelCandidateIndex}

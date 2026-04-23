@@ -4,6 +4,10 @@ import { useCallback, useMemo } from 'react'
 import { useTaskList } from '@/lib/query/hooks/useTaskStatus'
 import { resolveErrorDisplay } from '@/lib/errors/display'
 import { useDismissFailedTasks } from '@/lib/query/mutations/task-mutations'
+import {
+  NOVEL_PROMOTION_PANEL_IMAGE_TASK_TYPES,
+  isNovelPromotionPanelImageTaskType,
+} from '@/lib/novel-promotion/panel-task-types'
 
 interface UseStoryboardGroupTaskErrorsParams {
   projectId: string
@@ -20,6 +24,7 @@ export function useStoryboardGroupTaskErrors({
   const panelFailedTasksQuery = useTaskList({
     projectId,
     targetType: 'NovelPromotionPanel',
+    type: [...NOVEL_PROMOTION_PANEL_IMAGE_TASK_TYPES],
     statuses: ['failed'],
     limit: 200,
     enabled: !!projectId,
@@ -30,6 +35,7 @@ export function useStoryboardGroupTaskErrors({
   const panelTaskErrorMap = useMemo(() => {
     const map = new Map<string, { taskId: string; message: string }>()
     for (const task of panelFailedTasksQuery.data || []) {
+      if (!isNovelPromotionPanelImageTaskType(task.type)) continue
       const display = resolveErrorDisplay(task.error || null)
       if (!display) continue
       if (!map.has(task.targetId)) {
@@ -41,7 +47,7 @@ export function useStoryboardGroupTaskErrors({
 
   const clearPanelTaskError = useCallback((panelId: string) => {
     const taskIds = (panelFailedTasksQuery.data || [])
-      .filter((task) => task.targetId === panelId)
+      .filter((task) => task.targetId === panelId && isNovelPromotionPanelImageTaskType(task.type))
       .map((task) => task.id)
     if (taskIds.length === 0) return
     dismissMutation.mutate(taskIds)

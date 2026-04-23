@@ -25,6 +25,10 @@ import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import {
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
+import {
+  appendUrlsToPanelImageHistory,
+  parseStringArrayJson,
+} from '@/lib/novel-promotion/panel-image-history'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
@@ -286,6 +290,12 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   }
 
   const isFirstGeneration = !panel.imageUrl
+  const staleCandidateImages = parseStringArrayJson(panel.candidateImages)
+    .filter((candidate) => !candidate.startsWith('PENDING:'))
+  const nextHistory = appendUrlsToPanelImageHistory({
+    rawHistory: panel.imageHistory,
+    urls: staleCandidateImages,
+  })
 
   await assertTaskActive(job, 'persist_panel_image')
   if (isFirstGeneration) {
@@ -294,6 +304,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       data: {
         imageUrl: candidates[0] || null,
         candidateImages: candidateCount > 1 ? JSON.stringify(candidates) : null,
+        imageHistory: nextHistory.serialized,
       },
     })
   } else {
@@ -302,6 +313,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       data: {
         previousImageUrl: panel.imageUrl,
         candidateImages: JSON.stringify(candidates),
+        imageHistory: nextHistory.serialized,
       },
     })
   }

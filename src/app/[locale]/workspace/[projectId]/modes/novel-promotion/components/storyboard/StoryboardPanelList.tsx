@@ -34,6 +34,8 @@ interface StoryboardPanelListProps {
   uploadingPanels: Set<string>
   modifyingPanels: Set<string>
   panelTaskErrorMap: Map<string, { taskId: string; message: string }>
+  cancelablePanelImageTaskIds: Set<string>
+  cancelingPanelImageIds: Set<string>
   isPanelTaskRunning: (panel: StoryboardPanel) => boolean
   getPanelEditData: (panel: StoryboardPanel) => PanelEditData
   getPanelCandidates: (panel: NovelPromotionPanel) => { candidates: string[]; selectedIndex: number } | null
@@ -45,8 +47,10 @@ interface StoryboardPanelListProps {
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onUploadPanelImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: (panelId: string) => void
+  onOpenHistoryPanelPicker: (panelId: string) => void
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
   onSelectPanelCandidateIndex: (panelId: string, index: number) => void
@@ -76,7 +80,9 @@ function areStoryboardPanelListPropsEqual(previous: StoryboardPanelListProps, ne
     previous.hasUnsavedByPanel !== next.hasUnsavedByPanel ||
     previous.uploadingPanels !== next.uploadingPanels ||
     previous.modifyingPanels !== next.modifyingPanels ||
-    previous.panelTaskErrorMap !== next.panelTaskErrorMap
+    previous.panelTaskErrorMap !== next.panelTaskErrorMap ||
+    previous.cancelablePanelImageTaskIds !== next.cancelablePanelImageTaskIds ||
+    previous.cancelingPanelImageIds !== next.cancelingPanelImageIds
   ) {
     return false
   }
@@ -107,6 +113,8 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
     uploadingPanels,
     modifyingPanels,
     panelTaskErrorMap,
+    cancelablePanelImageTaskIds,
+    cancelingPanelImageIds,
     isPanelTaskRunning,
     getPanelEditData,
     getPanelCandidates,
@@ -118,8 +126,10 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
     onRemoveLocation,
     onRetryPanelSave,
     onRegeneratePanelImage,
+    onCancelPanelImageTask,
     onUploadPanelImage,
     onOpenSourcePanelPicker,
+    onOpenHistoryPanelPicker,
     onOpenEditModal,
     onOpenAIDataModal,
     onSelectPanelCandidateIndex,
@@ -156,6 +166,8 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
         const hasUnsavedChanges = hasUnsavedByPanel.has(panel.id) || panelSaveState?.status === 'error'
         const panelSaveError = panelSaveState?.errorMessage || null
         const panelTaskRunning = isPanelTaskRunning(panel)
+        const canCancelPanelImageTask = cancelablePanelImageTaskIds.has(panel.id)
+        const isCancelingPanelImageTask = cancelingPanelImageIds.has(panel.id)
         const taskError = panelTaskErrorMap.get(panel.id)
         const panelFailedError = taskError?.message || null
         const panelData = getPanelEditData(panel)
@@ -175,6 +187,7 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
                 panel={panel}
                 panelData={panelData}
                 imageUrl={imageUrl}
+                imageHistory={panel.imageHistory}
                 globalPanelNumber={globalPanelNumber}
                 storyboardId={storyboardId}
                 videoRatio={videoRatio}
@@ -185,6 +198,8 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
                 isUploadingImage={uploadingPanels.has(panel.id)}
                 isModifying={isPanelModifying}
                 isSubmittingPanelImageTask={panelTaskRunning}
+                canCancelPanelImageTask={canCancelPanelImageTask}
+                isCancelingPanelImageTask={isCancelingPanelImageTask}
                 failedError={panelFailedError}
                 candidateData={panelCandidateData}
                 onUpdate={(updates) => onPanelUpdate(panel.id, panel, updates)}
@@ -195,8 +210,10 @@ function StoryboardPanelList(props: StoryboardPanelListProps) {
                 onRemoveCharacter={(characterIndex) => onRemoveCharacter(panel, characterIndex)}
                 onRemoveLocation={() => onRemoveLocation(panel)}
                 onRegeneratePanelImage={onRegeneratePanelImage}
+                onCancelPanelImageTask={onCancelPanelImageTask}
                 onUploadImage={onUploadPanelImage}
                 onOpenSourcePanelPicker={() => onOpenSourcePanelPicker(panel.id)}
+                onOpenHistoryPanelPicker={() => onOpenHistoryPanelPicker(panel.id)}
                 onOpenEditModal={() => onOpenEditModal(index)}
                 onOpenAIDataModal={() => onOpenAIDataModal(index)}
                 onSelectCandidateIndex={onSelectPanelCandidateIndex}

@@ -3,6 +3,11 @@
 import { useMemo } from 'react'
 import { NovelPromotionStoryboard } from '@/types/project'
 import { useStoryboardTaskPresentation } from '@/lib/query/hooks/useTaskPresentation'
+import {
+  NOVEL_PROMOTION_PANEL_IMAGE_TASK_TYPES,
+  NOVEL_PROMOTION_PANEL_LIP_SYNC_TASK_TYPES,
+  NOVEL_PROMOTION_PANEL_VIDEO_TASK_TYPES,
+} from '@/lib/novel-promotion/panel-task-types'
 
 interface TaskTarget {
   key: string
@@ -56,7 +61,7 @@ function buildPanelTargets(storyboards: NovelPromotionStoryboard[], type: 'image
           key: `panel-image:${panel.id}`,
           targetType: 'NovelPromotionPanel',
           targetId: panel.id,
-          types: ['image_panel', 'panel_variant', 'modify_asset_image'],
+          types: [...NOVEL_PROMOTION_PANEL_IMAGE_TASK_TYPES],
           resource: 'image',
           hasOutput: !!panel.imageUrl,
         })
@@ -65,7 +70,7 @@ function buildPanelTargets(storyboards: NovelPromotionStoryboard[], type: 'image
           key: `panel-video:${panel.id}`,
           targetType: 'NovelPromotionPanel',
           targetId: panel.id,
-          types: ['video_panel'],
+          types: [...NOVEL_PROMOTION_PANEL_VIDEO_TASK_TYPES],
           resource: 'video',
           hasOutput: !!panel.videoUrl,
         })
@@ -74,7 +79,7 @@ function buildPanelTargets(storyboards: NovelPromotionStoryboard[], type: 'image
           key: `panel-lip:${panel.id}`,
           targetType: 'NovelPromotionPanel',
           targetId: panel.id,
-          types: ['lip_sync'],
+          types: [...NOVEL_PROMOTION_PANEL_LIP_SYNC_TASK_TYPES],
           resource: 'video',
           hasOutput: !!panel.lipSyncVideoUrl,
         })
@@ -136,18 +141,21 @@ export function useStoryboardTaskAwareStoryboards({
 
       const nextPanels = (storyboard.panels || []).map((panel) => {
         const panelRuntime = panel as typeof panel & {
-          imageTaskIntent?: string
+          imageTaskId?: string | null
+          imageTaskIntent?: string | null
           lipSyncTaskRunning?: boolean
         }
         const panelImageTaskState = panelImageStates.getTaskState(`panel-image:${panel.id}`)
         const panelImageRunning = isRunningPhase(panelImageTaskState?.phase)
 
-        const imageTaskIntent = panelImageTaskState?.intent
+        const imageTaskIntent = panelImageRunning ? (panelImageTaskState?.intent ?? null) : null
+        const imageTaskId = panelImageRunning ? (panelImageTaskState?.runningTaskId ?? null) : null
         const videoTaskRunning = isRunningPhase(panelVideoStates.getTaskState(`panel-video:${panel.id}`)?.phase)
         const lipSyncTaskRunning = isRunningPhase(panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)?.phase)
 
         if (
           panel.imageTaskRunning === panelImageRunning &&
+          panelRuntime.imageTaskId === imageTaskId &&
           panelRuntime.imageTaskIntent === imageTaskIntent &&
           panel.videoTaskRunning === videoTaskRunning &&
           panelRuntime.lipSyncTaskRunning === lipSyncTaskRunning
@@ -158,6 +166,7 @@ export function useStoryboardTaskAwareStoryboards({
         return {
           ...panel,
           imageTaskRunning: panelImageRunning,
+          imageTaskId,
           imageTaskIntent,
           videoTaskRunning,
           lipSyncTaskRunning,

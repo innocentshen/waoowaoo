@@ -152,3 +152,26 @@ export function useSelectProjectPanelCandidate(projectId: string) {
         onSuccess: invalidateProjectAssets,
     })
 }
+
+export function useSelectProjectPanelHistoryImage(projectId: string) {
+    const queryClient = useQueryClient()
+    const invalidateProjectAssets = () =>
+        invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+
+    return useMutation({
+        mutationFn: async (payload: {
+            panelId: string
+            selectedImageUrl: string
+        }) =>
+            await requestJsonWithError(
+                `/api/novel-promotion/${projectId}/panel/select-history-image`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                },
+                'Failed to select panel history image',
+            ),
+        onSuccess: invalidateProjectAssets,
+    })
+}

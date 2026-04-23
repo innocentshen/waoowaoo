@@ -1,19 +1,24 @@
 'use client'
 
+import React from 'react'
 import { useTranslations } from 'next-intl'
 import { GlassButton, GlassChip, GlassSurface } from '@/components/ui/primitives'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
+import { AppIcon } from '@/components/ui/icons'
 
 interface StoryboardHeaderProps {
   totalSegments: number
   totalPanels: number
   isDownloadingImages: boolean
   runningCount: number
+  cancelableRunningCount: number
   pendingPanelCount: number
   isBatchSubmitting: boolean
+  isCancelingAllPanelImageTasks: boolean
   onDownloadAllImages: () => void
   onGenerateAllPanels: () => void
+  onCancelAllRunningPanels: () => void
   onBack: () => void
 }
 
@@ -22,10 +27,13 @@ export default function StoryboardHeader({
   totalPanels,
   isDownloadingImages,
   runningCount,
+  cancelableRunningCount,
   pendingPanelCount,
   isBatchSubmitting,
+  isCancelingAllPanelImageTasks,
   onDownloadAllImages,
   onGenerateAllPanels,
+  onCancelAllRunningPanels,
   onBack
 }: StoryboardHeaderProps) {
   const t = useTranslations('storyboard')
@@ -33,6 +41,14 @@ export default function StoryboardHeader({
     ? resolveTaskPresentationState({
       phase: 'processing',
       intent: 'generate',
+      resource: 'image',
+      hasOutput: true,
+    })
+    : null
+  const cancelAllRunningState = isCancelingAllPanelImageTasks
+    ? resolveTaskPresentationState({
+      phase: 'processing',
+      intent: 'process',
       resource: 'image',
       hasOutput: true,
     })
@@ -71,6 +87,24 @@ export default function StoryboardHeader({
             disabled={runningCount > 0}
           >
             {t('header.generateAllPanels')} ({pendingPanelCount})
+          </GlassButton>
+        ) : null}
+
+        {cancelableRunningCount > 0 ? (
+          <GlassButton
+            variant="danger"
+            size="sm"
+            onClick={onCancelAllRunningPanels}
+            disabled={isCancelingAllPanelImageTasks}
+          >
+            {isCancelingAllPanelImageTasks ? (
+              <TaskStatusInline state={cancelAllRunningState} />
+            ) : (
+              <>
+                <AppIcon name="closeMd" className="h-3.5 w-3.5" />
+                <span>{t('header.terminateAll')}</span>
+              </>
+            )}
           </GlassButton>
         ) : null}
 

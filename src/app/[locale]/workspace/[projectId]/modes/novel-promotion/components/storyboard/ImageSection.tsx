@@ -19,6 +19,7 @@ interface PanelCandidateData {
 interface ImageSectionProps {
   panelId: string
   imageUrl: string | null
+  imageHistory?: string | null
   globalPanelNumber: number
   shotType: string
   videoRatio: string
@@ -26,17 +27,21 @@ interface ImageSectionProps {
   isUploadingImage: boolean
   isModifying: boolean
   isSubmittingPanelImageTask: boolean
+  canCancelPanelImageTask: boolean
+  isCancelingPanelImageTask: boolean
   failedError: string | null
   candidateData: PanelCandidateData | null
   previousImageUrl?: string | null
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
   onUploadImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: () => void
+  onOpenHistoryPanelPicker: () => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onSelectCandidateIndex: (panelId: string, index: number) => void
   onConfirmCandidate: (panelId: string, imageUrl: string) => Promise<void>
   onCancelCandidate: (panelId: string) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onClearError: () => void
   onUndo?: (panelId: string) => void
   onPreviewImage?: (url: string) => void
@@ -55,6 +60,7 @@ function areImageSectionPropsEqual(previous: ImageSectionProps, next: ImageSecti
   return (
     previous.panelId === next.panelId &&
     previous.imageUrl === next.imageUrl &&
+    previous.imageHistory === next.imageHistory &&
     previous.globalPanelNumber === next.globalPanelNumber &&
     previous.shotType === next.shotType &&
     previous.videoRatio === next.videoRatio &&
@@ -62,6 +68,8 @@ function areImageSectionPropsEqual(previous: ImageSectionProps, next: ImageSecti
     previous.isUploadingImage === next.isUploadingImage &&
     previous.isModifying === next.isModifying &&
     previous.isSubmittingPanelImageTask === next.isSubmittingPanelImageTask &&
+    previous.canCancelPanelImageTask === next.canCancelPanelImageTask &&
+    previous.isCancelingPanelImageTask === next.isCancelingPanelImageTask &&
     previous.failedError === next.failedError &&
     areCandidateDataEqual(previous.candidateData, next.candidateData) &&
     previous.previousImageUrl === next.previousImageUrl
@@ -71,6 +79,7 @@ function areImageSectionPropsEqual(previous: ImageSectionProps, next: ImageSecti
 function ImageSection({
   panelId,
   imageUrl,
+  imageHistory,
   globalPanelNumber,
   shotType,
   videoRatio,
@@ -78,17 +87,21 @@ function ImageSection({
   isUploadingImage,
   isModifying,
   isSubmittingPanelImageTask,
+  canCancelPanelImageTask,
+  isCancelingPanelImageTask,
   failedError,
   candidateData,
   previousImageUrl,
   onRegeneratePanelImage,
   onUploadImage,
   onOpenSourcePanelPicker,
+  onOpenHistoryPanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   onSelectCandidateIndex,
   onConfirmCandidate,
   onCancelCandidate,
+  onCancelPanelImageTask,
   onClearError,
   onUndo,
   onPreviewImage,
@@ -218,15 +231,20 @@ function ImageSection({
         <ImageSectionActionButtons
           panelId={panelId}
           imageUrl={imageUrl}
+          imageHistory={imageHistory}
           previousImageUrl={previousImageUrl}
           isSubmittingPanelImageTask={isSubmittingPanelImageTask}
+          canCancelPanelImageTask={canCancelPanelImageTask}
+          isCancelingPanelImageTask={isCancelingPanelImageTask}
           isUploading={isUploadingImage}
           isModifying={isModifying}
           onRegeneratePanelImage={onRegeneratePanelImage}
           onUploadImage={onUploadImage}
           onOpenSourcePanelPicker={onOpenSourcePanelPicker}
+          onOpenHistoryPanelPicker={onOpenHistoryPanelPicker}
           onOpenEditModal={onOpenEditModal}
           onOpenAIDataModal={onOpenAIDataModal}
+          onCancelPanelImageTask={onCancelPanelImageTask}
           onUndo={onUndo}
           triggerPulse={triggerPulse}
         />

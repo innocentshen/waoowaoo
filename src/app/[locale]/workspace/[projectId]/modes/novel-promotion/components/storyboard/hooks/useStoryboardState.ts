@@ -30,9 +30,13 @@ export interface StoryboardPanel {
   source_text?: string
   candidateImages?: string
   imageUrl?: string | null
+  imageHistory?: string | null
+  previousImageUrl?: string | null
   photographyRules?: string | null
   actingNotes?: string | null
   imageTaskRunning?: boolean
+  imageTaskId?: string | null
+  imageTaskIntent?: string | null
 }
 
 interface UseStoryboardStateProps {
@@ -87,9 +91,13 @@ function toStoryboardPanel(panel: NovelPromotionPanel): StoryboardPanel {
     source_text: panel.srtSegment || undefined,
     candidateImages: panel.candidateImages || undefined,
     imageUrl: panel.imageUrl,
+    imageHistory: panel.imageHistory,
+    previousImageUrl: panel.previousImageUrl,
     photographyRules: panel.photographyRules,
     actingNotes: panel.actingNotes,
     imageTaskRunning: panel.imageTaskRunning || false,
+    imageTaskId: panel.imageTaskId ?? null,
+    imageTaskIntent: panel.imageTaskIntent ?? null,
   }
 }
 

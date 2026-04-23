@@ -50,6 +50,7 @@
         "insertHere": "在此插入新分镜组"
     },
     "header": {
+        "terminateAll": "终止全部",
         "title": "分镜编辑",
         "panels": "个镜头",
         "submit": "提交生成",
@@ -126,6 +127,8 @@
         "noShotType": "未设置镜头"
     },
     "image": {
+        "terminate": "终止",
+        "terminating": "终止中...",
         "generating": "生成中...",
         "regenerate": "重新生成",
         "edit": "编辑",
@@ -151,6 +154,13 @@
         "upload": "上传",
         "uploadReplace": "上传替换",
         "chooseShot": "选镜头",
+        "history": "历史图",
+        "historyTitle": "选择历史图片",
+        "historyDescription": "可以从该镜头最近生成过的图片中切换，最多保留最近 15 张。",
+        "historyItem": "历史 {count}",
+        "useThisHistory": "用作当前画面",
+        "noHistory": "暂无历史图片",
+        "historyFailedError": "选择历史图片失败: {error}",
         "chooseShotTitle": "选择其他分镜画面",
         "chooseShotDescription": "从其他已有分镜里选一张画面，替换当前镜头。",
         "useThisShot": "用作当前画面",

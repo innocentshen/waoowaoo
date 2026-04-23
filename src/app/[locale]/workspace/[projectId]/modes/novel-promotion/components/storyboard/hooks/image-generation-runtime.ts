@@ -5,6 +5,10 @@ export interface StoryboardImageMutationResult {
   imageUrl?: string
 }
 
+function isConcreteTaskId(taskId: string | null | undefined): taskId is string {
+  return Boolean(taskId && taskId.trim() && !taskId.startsWith('optimistic:'))
+}
+
 export function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   return error.name === 'AbortError' || error.message === 'Failed to fetch'
@@ -27,6 +31,48 @@ export function updatePanelByIdInStoryboards(
       changed = true
       return updater(panel)
     })
+    return changed ? { ...storyboard, panels: updatedPanels } : storyboard
+  })
+}
+
+export function getRunningPanelImageTaskIdMap(
+  storyboards: NovelPromotionStoryboard[],
+): Map<string, string> {
+  const runningTaskIdsByPanelId = new Map<string, string>()
+
+  for (const storyboard of storyboards) {
+    for (const panel of getStoryboardPanels(storyboard)) {
+      if (!panel.imageTaskRunning) continue
+      const taskId = typeof panel.imageTaskId === 'string' ? panel.imageTaskId.trim() : ''
+      if (!isConcreteTaskId(taskId)) continue
+      runningTaskIdsByPanelId.set(panel.id, taskId)
+    }
+  }
+
+  return runningTaskIdsByPanelId
+}
+
+export function clearPanelImageTaskStateInStoryboards(
+  storyboards: NovelPromotionStoryboard[],
+  panelIds: Iterable<string>,
+): NovelPromotionStoryboard[] {
+  const targetIds = new Set(panelIds)
+  if (targetIds.size === 0) return storyboards
+
+  return storyboards.map((storyboard) => {
+    const panels = getStoryboardPanels(storyboard)
+    let changed = false
+    const updatedPanels = panels.map((panel) => {
+      if (!targetIds.has(panel.id)) return panel
+      changed = true
+      return {
+        ...panel,
+        imageTaskRunning: false,
+        imageTaskId: null,
+        imageTaskIntent: null,
+      }
+    })
+
     return changed ? { ...storyboard, panels: updatedPanels } : storyboard
   })
 }

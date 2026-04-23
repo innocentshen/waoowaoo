@@ -19,6 +19,7 @@ interface PanelCardProps {
   panel: StoryboardPanel
   panelData: PanelEditData
   imageUrl: string | null
+  imageHistory?: string | null
   globalPanelNumber: number
   storyboardId: string
   videoRatio: string
@@ -29,6 +30,8 @@ interface PanelCardProps {
   isUploadingImage: boolean
   isModifying: boolean
   isSubmittingPanelImageTask: boolean
+  canCancelPanelImageTask: boolean
+  isCancelingPanelImageTask: boolean
   failedError: string | null
   candidateData: PanelCandidateData | null
   previousImageUrl?: string | null
@@ -40,8 +43,10 @@ interface PanelCardProps {
   onRemoveCharacter: (index: number) => void
   onRemoveLocation: () => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onCancelPanelImageTask: (panelId: string) => Promise<boolean>
   onUploadImage: (panelId: string, file: File) => Promise<void>
   onOpenSourcePanelPicker: () => void
+  onOpenHistoryPanelPicker: () => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onSelectCandidateIndex: (panelId: string, index: number) => void
@@ -74,6 +79,7 @@ function arePanelCardPropsEqual(previous: PanelCardProps, next: PanelCardProps) 
     previous.panel === next.panel &&
     previous.panelData === next.panelData &&
     previous.imageUrl === next.imageUrl &&
+    previous.imageHistory === next.imageHistory &&
     previous.globalPanelNumber === next.globalPanelNumber &&
     previous.storyboardId === next.storyboardId &&
     previous.videoRatio === next.videoRatio &&
@@ -84,6 +90,8 @@ function arePanelCardPropsEqual(previous: PanelCardProps, next: PanelCardProps) 
     previous.isUploadingImage === next.isUploadingImage &&
     previous.isModifying === next.isModifying &&
     previous.isSubmittingPanelImageTask === next.isSubmittingPanelImageTask &&
+    previous.canCancelPanelImageTask === next.canCancelPanelImageTask &&
+    previous.isCancelingPanelImageTask === next.isCancelingPanelImageTask &&
     previous.failedError === next.failedError &&
     areCandidateDataEqual(previous.candidateData, next.candidateData) &&
     previous.previousImageUrl === next.previousImageUrl &&
@@ -98,6 +106,7 @@ function PanelCard({
   panel,
   panelData,
   imageUrl,
+  imageHistory,
   globalPanelNumber,
   storyboardId,
   videoRatio,
@@ -108,6 +117,8 @@ function PanelCard({
   isUploadingImage,
   isModifying,
   isSubmittingPanelImageTask,
+  canCancelPanelImageTask,
+  isCancelingPanelImageTask,
   failedError,
   candidateData,
   previousImageUrl,
@@ -119,8 +130,10 @@ function PanelCard({
   onRemoveCharacter,
   onRemoveLocation,
   onRegeneratePanelImage,
+  onCancelPanelImageTask,
   onUploadImage,
   onOpenSourcePanelPicker,
+  onOpenHistoryPanelPicker,
   onOpenEditModal,
   onOpenAIDataModal,
   onSelectCandidateIndex,
@@ -161,6 +174,7 @@ function PanelCard({
         <ImageSection
           panelId={panel.id}
           imageUrl={imageUrl}
+          imageHistory={imageHistory}
           globalPanelNumber={globalPanelNumber}
           shotType={panel.shot_type}
           videoRatio={videoRatio}
@@ -168,12 +182,15 @@ function PanelCard({
           isUploadingImage={isUploadingImage}
           isModifying={isModifying}
           isSubmittingPanelImageTask={isSubmittingPanelImageTask}
+          canCancelPanelImageTask={canCancelPanelImageTask}
+          isCancelingPanelImageTask={isCancelingPanelImageTask}
           failedError={failedError}
           candidateData={candidateData}
           previousImageUrl={previousImageUrl}
           onRegeneratePanelImage={onRegeneratePanelImage}
           onUploadImage={onUploadImage}
           onOpenSourcePanelPicker={onOpenSourcePanelPicker}
+          onOpenHistoryPanelPicker={onOpenHistoryPanelPicker}
           onOpenEditModal={onOpenEditModal}
           onOpenAIDataModal={onOpenAIDataModal}
           onSelectCandidateIndex={onSelectCandidateIndex}
@@ -181,6 +198,7 @@ function PanelCard({
           onCancelCandidate={onCancelCandidate}
           onClearError={onClearError}
           onUndo={onUndo}
+          onCancelPanelImageTask={onCancelPanelImageTask}
           onPreviewImage={onPreviewImage}
         />
 

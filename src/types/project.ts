@@ -196,6 +196,8 @@ export interface NovelPromotionPanel {
   actingNotes: string | null        // 演技指导数据JSON
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
+  imageTaskId?: string | null
+  imageTaskIntent?: string | null
   videoTaskRunning?: boolean
   imageErrorMessage?: string | null  // 图片生成错误消息
 }
