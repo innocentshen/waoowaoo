@@ -6,8 +6,8 @@ import {
 
 describe('grok edit input image limits', () => {
   it('allows multi-image edits for grok-imagine-image', () => {
-    expect(resolveGrokEditInputImageLimit('grok::grok-imagine-image')).toBe(3)
-    expect(getGrokEditInputImageLimitExceededMessage('grok::grok-imagine-image', 3)).toBeNull()
+    expect(resolveGrokEditInputImageLimit('grok::grok-imagine-image')).toBe(5)
+    expect(getGrokEditInputImageLimitExceededMessage('grok::grok-imagine-image', 5)).toBeNull()
   })
 
   it('treats grok-imagine-image-pro as single-image edit only', () => {

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import type { TaskPresentationState } from '@/lib/task/presentation'
+import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import StoryboardHeader from './StoryboardHeader'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { AppIcon } from '@/components/ui/icons'
@@ -18,6 +19,17 @@ interface StoryboardToolbarProps {
   isCancelingAllPanelImageTasks: boolean
   addingStoryboardGroup: boolean
   addingStoryboardGroupState: TaskPresentationState | null
+  storyboardModel?: string
+  capabilityOverrides: CapabilitySelections
+  videoRatio: string
+  userImageModels: Array<{
+    value: string
+    label: string
+    provider?: string
+    providerName?: string
+    capabilities?: ModelCapabilities
+  }>
+  onUpdateProjectConfig: (key: string, value: unknown) => Promise<void>
   onDownloadAllImages: () => Promise<void>
   onGenerateAllPanels: () => Promise<void>
   onCancelAllRunningPanels: () => Promise<unknown>
@@ -36,6 +48,11 @@ export default function StoryboardToolbar({
   isCancelingAllPanelImageTasks,
   addingStoryboardGroup,
   addingStoryboardGroupState,
+  storyboardModel,
+  capabilityOverrides,
+  videoRatio,
+  userImageModels,
+  onUpdateProjectConfig,
   onDownloadAllImages,
   onGenerateAllPanels,
   onCancelAllRunningPanels,
@@ -54,6 +71,11 @@ export default function StoryboardToolbar({
         pendingPanelCount={pendingPanelCount}
         isBatchSubmitting={isBatchSubmitting}
         isCancelingAllPanelImageTasks={isCancelingAllPanelImageTasks}
+        storyboardModel={storyboardModel}
+        capabilityOverrides={capabilityOverrides}
+        videoRatio={videoRatio}
+        userImageModels={userImageModels}
+        onUpdateProjectConfig={onUpdateProjectConfig}
         onDownloadAllImages={onDownloadAllImages}
         onGenerateAllPanels={onGenerateAllPanels}
         onCancelAllRunningPanels={onCancelAllRunningPanels}

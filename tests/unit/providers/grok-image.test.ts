@@ -184,7 +184,33 @@ describe('generateGrokImage', () => {
     expect(normalizeToOriginalMediaUrlMock).not.toHaveBeenCalled()
   })
 
-  it('rejects more than three input images for grok-imagine-image before calling xai', async () => {
+  it('allows up to five input images for grok-imagine-image edits', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      data: [{ url: 'https://cdn.x.ai/generated.jpg' }],
+    }), { status: 200 }))
+
+    await generateGrokImage({
+      userId: 'user-1',
+      prompt: 'edit this image',
+      referenceImages: [
+        'https://example.com/ref-a.png',
+        'https://example.com/ref-b.png',
+        'https://example.com/ref-c.png',
+        'https://example.com/ref-d.png',
+        'https://example.com/ref-e.png',
+      ],
+      options: {
+        provider: 'grok',
+        modelId: 'grok-imagine-image',
+      },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))
+    expect(body.images).toHaveLength(5)
+  })
+
+  it('rejects more than five input images for grok-imagine-image before calling xai', async () => {
     await expect(generateGrokImage({
       userId: 'user-1',
       prompt: 'edit this image',
@@ -193,6 +219,8 @@ describe('generateGrokImage', () => {
         'https://example.com/ref-b.png',
         'https://example.com/ref-c.png',
         'https://example.com/ref-d.png',
+        'https://example.com/ref-e.png',
+        'https://example.com/ref-f.png',
       ],
       options: {
         provider: 'grok',
@@ -201,6 +229,43 @@ describe('generateGrokImage', () => {
     })).rejects.toThrow('GROK_IMAGE_REFERENCE_LIMIT_EXCEEDED')
 
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('makes sensitive thriller prompts non-graphic before sending to xai', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      data: [{ b64_json: PNG_BASE64 }],
+    }), { status: 200 }))
+
+    await generateGrokImage({
+      userId: 'user-1',
+      prompt: '血衣研究员额角伤口渗血，男孩蜷缩在实验台下',
+      options: {
+        provider: 'grok',
+        modelId: 'grok-imagine-image',
+      },
+    })
+
+    const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))
+    expect(body.prompt).toContain('Grok media safety constraints')
+    expect(body.prompt).toContain('受伤研究员')
+    expect(body.prompt).not.toContain('血衣研究员')
+    expect(body.prompt).not.toContain('伤口')
+    expect(body.prompt).not.toContain('渗血')
+  })
+
+  it('surfaces xai image moderation as an explicit error', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      respect_moderation: false,
+    }), { status: 200 }))
+
+    await expect(generateGrokImage({
+      userId: 'user-1',
+      prompt: 'draw cat',
+      options: {
+        provider: 'grok',
+        modelId: 'grok-imagine-image',
+      },
+    })).rejects.toThrow('GROK_IMAGE_CONTENT_MODERATED')
   })
 
   it('rejects multiple input images for grok-imagine-image-pro before calling xai', async () => {

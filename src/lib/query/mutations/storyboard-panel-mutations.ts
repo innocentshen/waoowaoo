@@ -66,6 +66,8 @@ export function useRegenerateProjectPanelImage(projectId: string) {
         },
         onSettled: () => {
             invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
+            queryClient.invalidateQueries({ queryKey: queryKeys.tasks.targetStatesAll(projectId), exact: false })
         },
     })
 }

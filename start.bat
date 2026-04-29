@@ -43,29 +43,8 @@ if errorlevel 1 (
   goto :fail
 )
 
-where docker >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] Docker was not found. Install Docker Desktop first.
-  goto :fail
-)
-
-docker info >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] Docker Desktop is not running, or its Linux engine failed to start.
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\repair-docker-desktop.ps1"
-  echo.
-  echo [HINT] If the diagnosis reports a stuck Docker Desktop VHDX,
-  echo [HINT] open PowerShell as Administrator and run:
-  echo [HINT]   powershell -ExecutionPolicy Bypass -File "%~dp0scripts\repair-docker-desktop.ps1" -Repair
-  goto :fail
-)
-
 echo.
-echo [0/6] Checking for conflicting Docker app container ...
-call :stop_container_if_running "waoowaoo-app" "Docker app"
-if errorlevel 1 goto :fail
-
-echo [1/6] Preparing .env ...
+echo [1/4] Preparing .env ...
 if not exist ".env" (
   if exist ".env.example" (
     copy /Y ".env.example" ".env" >nul
@@ -79,7 +58,7 @@ if not exist ".env" (
 )
 
 echo.
-echo [2/6] Installing dependencies ...
+echo [2/4] Installing dependencies ...
 set "NEED_NPM_INSTALL=0"
 if not exist "node_modules" set "NEED_NPM_INSTALL=1"
 if not exist "node_modules\next\package.json" set "NEED_NPM_INSTALL=1"
@@ -97,26 +76,12 @@ if "%NEED_NPM_INSTALL%"=="1" (
 )
 
 echo.
-echo [3/6] Starting local services with Docker ...
-call docker compose up -d mysql redis minio
-if errorlevel 1 goto :fail
-
-echo.
-echo [4/6] Waiting for Docker services to become healthy ...
-call :wait_for_healthy "waoowaoo-mysql" "MySQL"
-if errorlevel 1 goto :fail
-call :wait_for_healthy "waoowaoo-redis" "Redis"
-if errorlevel 1 goto :fail
-call :wait_for_healthy "waoowaoo-minio" "MinIO"
-if errorlevel 1 goto :fail
-
-echo.
-echo [4.1/6] Releasing Prisma engine file locks ...
+echo [3/4] Releasing Prisma engine file locks ...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prepare-prisma-generate.ps1" -RepoRoot "%CD%"
 if errorlevel 1 goto :fail
 
 echo.
-echo [5/6] Initializing database schema ...
+echo [3.1/4] Initializing database schema ...
 if "%ACCEPT_DATA_LOSS%"=="1" (
   call npx prisma db push --accept-data-loss --skip-generate
 ) else (
@@ -131,7 +96,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [5.1/6] Regenerating Prisma Client ...
+echo [3.2/4] Regenerating Prisma Client ...
 call npx prisma generate
 if errorlevel 1 goto :fail
 
@@ -142,7 +107,7 @@ if "%SETUP_ONLY%"=="1" (
 )
 
 echo.
-echo [6/6] Starting app ...
+echo [4/4] Starting frontend and backend services ...
 echo App:       http://localhost:3000
 echo BullBoard: http://localhost:3010/admin/queues
 echo Press Ctrl+C to stop.
@@ -150,40 +115,6 @@ echo.
 call npm run dev
 if errorlevel 1 goto :fail
 goto :success
-
-:stop_container_if_running
-set "CONTAINER=%~1"
-set "LABEL=%~2"
-set "CONTAINER_STATE="
-for /f "usebackq delims=" %%s in (`docker inspect -f "{{.State.Status}}" %CONTAINER% 2^>nul`) do set "CONTAINER_STATE=%%s"
-if /I "%CONTAINER_STATE%"=="running" (
-  echo %LABEL% container %CONTAINER% is running and would conflict with local dev. Stopping it...
-  docker stop %CONTAINER% >nul
-  if errorlevel 1 (
-    echo [ERROR] Failed to stop conflicting container %CONTAINER%.
-    exit /b 1
-  )
-  echo %LABEL% container stopped.
-) else (
-  echo No conflicting %LABEL% container detected.
-)
-exit /b 0
-
-:wait_for_healthy
-set "CONTAINER=%~1"
-set "LABEL=%~2"
-for /l %%i in (1,1,60) do (
-  set "STATUS="
-  for /f "delims=" %%s in ('docker inspect -f "{{.State.Health.Status}}" !CONTAINER! 2^>nul') do set "STATUS=%%s"
-  if /I "!STATUS!"=="healthy" (
-    echo !LABEL! is healthy.
-    exit /b 0
-  )
-  echo Waiting for !LABEL!... (%%i/60)
-  timeout /t 2 /nobreak >nul
-)
-echo [ERROR] !LABEL! did not become healthy in time.
-exit /b 1
 
 :usage
 echo Usage:

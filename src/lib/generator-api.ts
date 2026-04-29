@@ -37,6 +37,40 @@ const GROK2API_VIDEO_MODEL_IDS = new Set([
     'grok-imagine-1.0-video',
     'grok-imagine-video',
 ])
+const GPT_IMAGE_2_MODEL_IDS = new Set([
+    'gpt-image-2',
+])
+const GPT_IMAGE_2_SUPPORTED_SIZES = new Set([
+    '1024x1024',
+    '1536x1024',
+    '1024x1536',
+])
+const GPT_IMAGE_2_ASPECT_RATIO_TO_SIZE: Record<string, string> = {
+    '1:1': '1024x1024',
+    '16:9': '1536x1024',
+    '9:16': '1024x1536',
+    '4:3': '1536x1024',
+    '3:4': '1024x1536',
+    '3:2': '1536x1024',
+    '2:3': '1024x1536',
+    '5:4': '1536x1024',
+    '4:5': '1024x1536',
+    '2:1': '1536x1024',
+    '1:2': '1024x1536',
+    '21:9': '1536x1024',
+    '9:21': '1024x1536',
+}
+const GPT_IMAGE_2_LEGACY_SIZE_TO_SIZE: Record<string, string> = {
+    '1792x1024': '1536x1024',
+    '1024x1792': '1024x1536',
+    '1280x720': '1536x1024',
+    '720x1280': '1024x1536',
+    '2048x2048': '1024x1024',
+    '2048x1152': '1536x1024',
+    '1152x2048': '1024x1536',
+    '2048x1536': '1536x1024',
+    '1536x2048': '1024x1536',
+}
 const GROK2API_SUPPORTED_SIZES = new Set([
     '1024x1024',
     '1280x720',
@@ -47,6 +81,14 @@ const GROK2API_SUPPORTED_SIZES = new Set([
 const GROK2API_VIDEO_SUPPORTED_RESOLUTIONS = new Set(['480p', '720p'])
 const GROK2API_VIDEO_SUPPORTED_DURATIONS = new Set([6, 10, 12, 16, 20])
 const GROK2API_VIDEO_SUPPORTED_PRESETS = new Set(['fun', 'normal', 'spicy', 'custom'])
+const OPENAI_COMPAT_IMAGE_SUPPORTED_SIZES = new Set([
+    'auto',
+    '1024x1024',
+    '1536x1024',
+    '1024x1536',
+    '1792x1024',
+    '1024x1792',
+])
 const GROK2API_ASPECT_RATIO_TO_SIZE: Record<string, string> = {
     '1:1': '1024x1024',
     '16:9': '1280x720',
@@ -127,6 +169,61 @@ function normalizeGrok2ApiImageTemplateOptions(
     }
 }
 
+function normalizeOpenAICompatImageTemplateOptions(
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    const next = { ...options }
+    const explicitSize = readStringOption(next.size)
+    if (explicitSize && explicitSize !== 'auto') return next
+
+    const mappedSize = aspectRatioToOpenAISize(readStringOption(next.aspectRatio))
+    if (mappedSize) {
+        return {
+            ...next,
+            size: mappedSize,
+        }
+    }
+
+    const explicitResolution = readStringOption(next.resolution)
+    if (explicitResolution && OPENAI_COMPAT_IMAGE_SUPPORTED_SIZES.has(explicitResolution)) {
+        return {
+            ...next,
+            size: explicitResolution,
+        }
+    }
+
+    if (explicitSize === 'auto') {
+        return {
+            ...next,
+            size: 'auto',
+        }
+    }
+
+    return next
+}
+
+function resolveGptImage2Size(value: string | undefined): string | undefined {
+    if (!value || value === 'auto') return undefined
+    if (GPT_IMAGE_2_SUPPORTED_SIZES.has(value)) return value
+    return GPT_IMAGE_2_LEGACY_SIZE_TO_SIZE[value] || GPT_IMAGE_2_ASPECT_RATIO_TO_SIZE[value]
+}
+
+function normalizeGptImage2TemplateOptions(
+    options: Record<string, unknown>,
+): Record<string, unknown> {
+    const next = { ...options }
+    const resolvedSize =
+        resolveGptImage2Size(readStringOption(next.size)) ||
+        resolveGptImage2Size(readStringOption(next.resolution)) ||
+        resolveGptImage2Size(readStringOption(next.aspectRatio)) ||
+        '1024x1024'
+
+    return {
+        ...next,
+        size: resolvedSize,
+    }
+}
+
 function normalizeGrok2ApiVideoTemplateOptions(
     options: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -192,7 +289,8 @@ function normalizeTemplateImageOptions(
     modelId: string,
     options: Record<string, unknown>,
 ): Record<string, unknown> {
-    if (!isGrok2ApiImageModelId(modelId)) return options
+    if (GPT_IMAGE_2_MODEL_IDS.has(modelId)) return normalizeGptImage2TemplateOptions(options)
+    if (!isGrok2ApiImageModelId(modelId)) return normalizeOpenAICompatImageTemplateOptions(options)
     return normalizeGrok2ApiImageTemplateOptions(options)
 }
 

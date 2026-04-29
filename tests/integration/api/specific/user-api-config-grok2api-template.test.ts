@@ -117,6 +117,57 @@ describe('api specific - user api-config PUT grok2api template backfill', () => 
     })
   })
 
+  it('backfills gpt-image-2 as sync b64 image template', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const req = buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [
+          { id: 'openai-compatible:oa-1', name: 'OpenAI Compat', baseUrl: 'https://compat.test', apiKey: 'oa-key' },
+        ],
+        models: [
+          {
+            modelId: 'gpt-image-2',
+            modelKey: 'openai-compatible:oa-1::gpt-image-2',
+            name: 'GPT Image 2',
+            type: 'image',
+            provider: 'openai-compatible:oa-1',
+          },
+        ],
+      },
+    })
+
+    const res = await route.PUT(req, routeContext)
+    expect(res.status).toBe(200)
+
+    const savedModel = readSavedModelsFromUpsert().find((item) => item.modelKey === 'openai-compatible:oa-1::gpt-image-2')
+    expect(savedModel?.compatMediaTemplate).toMatchObject({
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        path: '/images/generations',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          n: 1,
+          size: '{{size}}',
+          response_format: 'b64_json',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+      },
+    })
+    expect(savedModel?.compatMediaTemplate).not.toHaveProperty('status')
+    expect(savedModel?.compatMediaTemplate).not.toHaveProperty('polling')
+  })
+
   it('backfills grok2api image edit template with multipart image field', async () => {
     installAuthMocks()
     mockAuthenticated('user-1')

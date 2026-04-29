@@ -22,6 +22,7 @@ import { getProviderConfig, getUserModels } from './api-config'
 import { buildRenderedTemplateRequest, buildTemplateVariables, normalizeResponseJson, readJsonPath } from './openai-compat-template-runtime'
 import { composeModelKey } from './model-config-contract'
 import { setProxy } from '../../lib/prompts/proxy'
+import type { TemplateResponseMap } from './openai-compat-media-template'
 
 const OPENAI_COMPAT_PROVIDER_PREFIX = 'openai-compatible:'
 const PROVIDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -327,6 +328,96 @@ function resolveOCompatModelKey(providerId: string, token: string): string {
     return composed
 }
 
+function readOutputUrls(value: unknown): string[] {
+    if (typeof value === 'string' && value.trim()) return [value.trim()]
+    if (!value || typeof value !== 'object') return []
+
+    const urls: string[] = []
+    const append = (item: unknown) => {
+        if (typeof item === 'string' && item.trim()) {
+            urls.push(item.trim())
+            return
+        }
+        if (!item || typeof item !== 'object') return
+        if (Array.isArray(item)) {
+            for (const nested of item) append(nested)
+            return
+        }
+        const record = item as Record<string, unknown>
+        for (const key of ['url', 'image_url', 'imageUrl', 'output_url', 'outputUrl']) {
+            append(record[key])
+        }
+    }
+    append(value)
+    return urls
+}
+
+function readFirstStringByPaths(payload: unknown, paths: string[]): string {
+    for (const path of paths) {
+        const value = readJsonPath(payload, path)
+        if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    return ''
+}
+
+function readOCompatOutputUrl(payload: unknown, responseMap: TemplateResponseMap): string {
+    const outputUrl = readJsonPath(payload, responseMap.outputUrlPath)
+    if (typeof outputUrl === 'string' && outputUrl.trim()) return outputUrl.trim()
+
+    const outputUrls = readOutputUrls(readJsonPath(payload, responseMap.outputUrlsPath))
+    if (outputUrls.length > 0) return outputUrls[0]
+
+    return readFirstStringByPaths(payload, [
+        '$.data.result.images[0].url[0]',
+        '$.data.result.images[0].url',
+        '$.data.result.data[0].url',
+        '$.data.result.url',
+        '$.data.result.image_url',
+        '$.data.url',
+        '$.data.image_url',
+        '$.result.data[0].url',
+        '$.result.data.url',
+        '$.result.images[0].url[0]',
+        '$.result.images[0].url',
+        '$.result.url',
+        '$.result.image_url',
+        '$.data[0].url',
+        '$.data.url',
+        '$.image.url',
+        '$.image_url',
+        '$.url',
+    ])
+}
+
+function readOCompatStatus(payload: unknown, responseMap: TemplateResponseMap): string {
+    const statusRaw = readJsonPath(payload, responseMap.statusPath)
+    if (typeof statusRaw === 'string' && statusRaw.trim()) return statusRaw.trim().toLowerCase()
+
+    return readFirstStringByPaths(payload, [
+        '$.status',
+        '$.data.status',
+        '$.data[0].status',
+        '$.result.status',
+        '$.task.status',
+    ]).toLowerCase()
+}
+
+function readOCompatError(payload: unknown, responseMap: TemplateResponseMap): string {
+    const errorRaw = readJsonPath(payload, responseMap.errorPath)
+    if (typeof errorRaw === 'string' && errorRaw.trim()) return errorRaw.trim()
+
+    return readFirstStringByPaths(payload, [
+        '$.error.message',
+        '$.error',
+        '$.message',
+        '$.msg',
+        '$.data.error.message',
+        '$.data.error',
+        '$.data.message',
+        '$.data.msg',
+    ])
+}
+
 async function pollOCompatTask(
     type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN',
     taskId: string,
@@ -356,26 +447,50 @@ async function pollOCompatTask(
         prompt: '',
         taskId,
     })
-    const statusRequest = await buildRenderedTemplateRequest({
-        baseUrl: config.baseUrl,
-        endpoint: template.status,
-        variables,
-        defaultAuthHeader: `Bearer ${config.apiKey}`,
-    })
-    const response = await fetch(statusRequest.endpointUrl, {
-        method: statusRequest.method,
-        headers: statusRequest.headers,
-    })
-    const rawText = await response.text().catch(() => '')
-    if (!response.ok) {
-        return {
-            status: 'failed',
-            error: `OCOMPAT status request failed: ${response.status}`,
+
+    const statusEndpoints = [template.status]
+    if (type === 'IMAGE' && model.modelId === 'gpt-image-2') {
+        for (const path of ['/tasks/{{task_id}}', '/images/generations/{{task_id}}']) {
+            if (!statusEndpoints.some((endpoint) => endpoint.path === path)) {
+                statusEndpoints.push({ method: 'GET', path })
+            }
         }
     }
-    const payload = normalizeResponseJson(rawText)
-    const statusRaw = readJsonPath(payload, template.response.statusPath)
-    const status = typeof statusRaw === 'string' ? statusRaw.trim().toLowerCase() : ''
+
+    let payload: unknown
+    let status = ''
+    let lastStatusCode: number | undefined
+    for (const endpoint of statusEndpoints) {
+        const statusRequest = await buildRenderedTemplateRequest({
+            baseUrl: config.baseUrl,
+            endpoint,
+            variables,
+            defaultAuthHeader: `Bearer ${config.apiKey}`,
+        })
+        const response = await fetch(statusRequest.endpointUrl, {
+            method: statusRequest.method,
+            headers: statusRequest.headers,
+        })
+        const rawText = await response.text().catch(() => '')
+        if (!response.ok) {
+            lastStatusCode = response.status
+            continue
+        }
+        const candidatePayload = normalizeResponseJson(rawText)
+        const candidateStatus = readOCompatStatus(candidatePayload, template.response)
+        if (candidateStatus) {
+            payload = candidatePayload
+            status = candidateStatus
+            break
+        }
+        payload = candidatePayload
+    }
+    if (!payload && lastStatusCode !== undefined) {
+        return {
+            status: 'failed',
+            error: `OCOMPAT status request failed: ${lastStatusCode}`,
+        }
+    }
     if (!status) {
         return {
             status: 'failed',
@@ -385,14 +500,14 @@ async function pollOCompatTask(
     const doneStates = (template.polling?.doneStates || []).map((item) => item.toLowerCase())
     const failStates = (template.polling?.failStates || []).map((item) => item.toLowerCase())
     if (doneStates.includes(status)) {
-        const outputUrl = readJsonPath(payload, template.response.outputUrlPath)
-        if (typeof outputUrl === 'string' && outputUrl.trim()) {
+        const outputUrl = readOCompatOutputUrl(payload, template.response)
+        if (outputUrl) {
             return {
                 status: 'completed',
-                resultUrl: outputUrl.trim(),
+                resultUrl: outputUrl,
                 ...(type === 'VIDEO'
-                    ? { videoUrl: outputUrl.trim() }
-                    : { imageUrl: outputUrl.trim() }),
+                    ? { videoUrl: outputUrl }
+                    : { imageUrl: outputUrl }),
             }
         }
         if (template.content) {
@@ -419,10 +534,9 @@ async function pollOCompatTask(
         }
     }
     if (failStates.includes(status)) {
-        const errorRaw = readJsonPath(payload, template.response.errorPath)
         return {
             status: 'failed',
-            error: typeof errorRaw === 'string' && errorRaw.trim() ? errorRaw.trim() : `OCOMPAT task failed: ${status}`,
+            error: readOCompatError(payload, template.response) || `OCOMPAT task failed: ${status}`,
         }
     }
     return { status: 'pending' }
@@ -882,6 +996,7 @@ interface GrokVideoStatusResponse {
     status?: string
     video?: {
         url?: string
+        respect_moderation?: boolean
     }
     error?: {
         message?: string
@@ -938,6 +1053,13 @@ async function pollGrokTask(
 
         const status = (typeof data.status === 'string' ? data.status : '').trim().toLowerCase()
         const videoUrl = typeof data.video?.url === 'string' ? data.video.url.trim() : ''
+
+        if (data.video?.respect_moderation === false) {
+            return {
+                status: 'failed',
+                error: 'Grok: content moderated by xAI',
+            }
+        }
 
         if (status === 'failed' || status === 'error' || status === 'expired' || status === 'cancelled' || status === 'canceled') {
             return {

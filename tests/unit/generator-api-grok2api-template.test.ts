@@ -90,6 +90,27 @@ describe('generator-api grok2api compat template normalization', () => {
     }))
   })
 
+  it('maps gpt-image-2 aspect ratio to supported OpenAI image size', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId: 'gpt-image-2',
+      modelKey: 'openai-compatible:oa-1::gpt-image-2',
+      mediaType: 'image',
+      compatMediaTemplate: IMAGE_TEMPLATE,
+    })
+
+    await generateImage('user-1', 'openai-compatible:oa-1::gpt-image-2', 'draw cat', {
+      aspectRatio: '16:9',
+    })
+
+    expect(generateImageViaOpenAICompatTemplateMock).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        aspectRatio: '16:9',
+        size: '1536x1024',
+      }),
+    }))
+  })
+
   it('uses explicit grok2api image size from resolution-like option and falls back to upstream default', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'openai-compatible:oa-1',

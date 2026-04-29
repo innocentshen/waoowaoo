@@ -11,6 +11,8 @@ import {
   resolveGrokProviderConfig,
 } from './shared'
 import { getGrokEditInputImageLimitExceededMessage } from './edit-input-limit'
+import { normalizeGrokMediaPromptForSafety } from './prompt-safety'
+import { logGrokProviderRequest, summarizeGrokMediaValue } from './request-log'
 import { setProxy } from '../../../../lib/prompts/proxy'
 
 export interface GrokImageGenerateParams {
@@ -31,6 +33,7 @@ interface GrokImageItem {
 
 interface GrokImageResponse {
   data?: GrokImageItem[]
+  respect_moderation?: boolean
   error?: { message?: string } | string
   message?: string
 }
@@ -77,6 +80,10 @@ function normalizeResolution(value: unknown): string | undefined {
 }
 
 function buildImageResult(payload: GrokImageResponse): GenerateResult {
+  if (payload.respect_moderation === false) {
+    throw new Error('GROK_IMAGE_CONTENT_MODERATED: xAI rejected the image content by moderation')
+  }
+
   const items = Array.isArray(payload.data) ? payload.data : []
   const base64Images = items
     .map((item) => (typeof item?.b64_json === 'string' ? item.b64_json.trim() : ''))
@@ -112,6 +119,7 @@ export async function generateGrokImage(params: GrokImageGenerateParams): Promis
   if (!prompt) {
     throw new Error('GROK_IMAGE_PROMPT_REQUIRED')
   }
+  const safePrompt = normalizeGrokMediaPromptForSafety(prompt)
 
   const providerConfig = await resolveGrokProviderConfig(params.userId, params.options.provider)
   const modelId = readTrimmedString(params.options.modelId) || GROK_DEFAULT_IMAGE_MODEL_ID
@@ -132,7 +140,7 @@ export async function generateGrokImage(params: GrokImageGenerateParams): Promis
   const endpoint = normalizedReferences.length > 0 ? '/images/edits' : '/images/generations'
   const body: Record<string, unknown> = {
     model: modelId,
-    prompt,
+    prompt: safePrompt,
     response_format: responseFormat,
   }
   if (aspectRatio) body.aspect_ratio = aspectRatio
@@ -152,6 +160,16 @@ export async function generateGrokImage(params: GrokImageGenerateParams): Promis
   await setProxy()
 
   const requestUrl = `${providerConfig.baseUrl}${endpoint}`
+  logGrokProviderRequest({
+    mediaType: 'image',
+    requestUrl,
+    endpoint,
+    requestMode: normalizedReferences.length > 0 ? 'edit' : 'generation',
+    body,
+    sourceInputs: {
+      referenceImages: referenceImages.map((image) => summarizeGrokMediaValue(image)),
+    },
+  })
   let response: Response
   try {
     response = await fetch(requestUrl, {

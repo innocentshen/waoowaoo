@@ -20,8 +20,16 @@ interface UseWorkspaceStageRuntimeParams {
   isStartingScriptToStoryboard: boolean
   videoRatio: string | undefined
   artStyle: string | undefined
+  storyboardModel: string | undefined
   videoModel: string | undefined
   capabilityOverrides: CapabilitySelections
+  userImageModels: Array<{
+    value: string
+    label: string
+    provider?: string
+    providerName?: string
+    capabilities?: ModelCapabilities
+  }> | undefined
   userVideoModels: Array<{
     value: string
     label: string
@@ -73,8 +81,10 @@ export function useWorkspaceStageRuntime({
   isStartingScriptToStoryboard,
   videoRatio,
   artStyle,
+  storyboardModel,
   videoModel,
   capabilityOverrides,
+  userImageModels,
   userVideoModels,
   handleUpdateEpisode,
   handleUpdateConfig,
@@ -93,6 +103,10 @@ export function useWorkspaceStageRuntime({
     () => userVideoModels || [],
     [userVideoModels],
   )
+  const resolvedUserImageModels = useMemo(
+    () => userImageModels || [],
+    [userImageModels],
+  )
 
   return useMemo<WorkspaceStageRuntimeValue>(() => ({
     assetsLoading,
@@ -103,8 +117,10 @@ export function useWorkspaceStageRuntime({
     isStartingScriptToStoryboard,
     videoRatio,
     artStyle,
+    storyboardModel,
     videoModel,
     capabilityOverrides,
+    userImageModels: resolvedUserImageModels,
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onUpdateProjectConfig: handleUpdateConfig,
@@ -146,7 +162,9 @@ export function useWorkspaceStageRuntime({
     runStoryToScriptFlow,
     runWithRebuildConfirm,
     resolvedUserVideoModels,
+    resolvedUserImageModels,
     capabilityOverrides,
+    storyboardModel,
     videoModel,
     videoRatio,
   ])

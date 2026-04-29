@@ -17,6 +17,12 @@ import {
 import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { normalizeVideoGenerationCount } from '@/lib/video-generation/count'
+import { createScopedLogger } from '@/lib/logging/core'
+
+const videoSubmitLogger = createScopedLogger({
+  module: 'api.novel-promotion.video',
+  action: 'video.submit.request',
+})
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -366,6 +372,32 @@ function buildVideoTaskDedupeKey(
   return `video_panel:${panelId}:${params.requestSeed}:${params.sequence}`
 }
 
+function readTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function resolvePanelVideoPromptForLog(
+  payload: Record<string, unknown>,
+  panel: {
+    videoPrompt: string | null
+    firstLastFramePrompt: string | null
+    description: string | null
+  },
+) {
+  const videoOperation = isRecord(payload.videoOperation) ? payload.videoOperation : null
+  const firstLastFrame = isRecord(payload.firstLastFrame) ? payload.firstLastFrame : null
+
+  const candidates = [
+    { source: 'videoOperation.instruction', prompt: readTrimmedString(videoOperation?.instruction) },
+    { source: 'firstLastFrame.customPrompt', prompt: readTrimmedString(firstLastFrame?.customPrompt) },
+    { source: 'panel.firstLastFramePrompt', prompt: firstLastFrame ? readTrimmedString(panel.firstLastFramePrompt) : '' },
+    { source: 'payload.customPrompt', prompt: readTrimmedString(payload.customPrompt) },
+    { source: 'panel.videoPrompt', prompt: readTrimmedString(panel.videoPrompt) },
+    { source: 'panel.description', prompt: readTrimmedString(panel.description) },
+  ]
+  return candidates.find((candidate) => candidate.prompt) || { source: null, prompt: '' }
+}
+
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -381,7 +413,8 @@ export const POST = apiHandler(async (
   const locale = resolveRequiredTaskLocale(request, body)
   const isBatch = body?.all === true
   const requestedCount = normalizeVideoGenerationCount(body?.count)
-  const requestSeed = getRequestId(request) || randomUUID()
+  const requestId = getRequestId(request) || undefined
+  const requestSeed = requestId || randomUUID()
 
   validateFirstLastFrameModel(body?.firstLastFrame)
   validateVideoOperation(body?.videoOperation)
@@ -410,6 +443,20 @@ export const POST = apiHandler(async (
     ...body,
     ...(effectiveGenerationOptions ? { generationOptions: effectiveGenerationOptions } : {}),
   }
+  videoSubmitLogger.info({
+    audit: true,
+    requestId,
+    projectId,
+    userId: session.user.id,
+    message: 'video generation submit payload',
+    details: {
+      isBatch,
+      requestedCount,
+      generationMode: resolveVideoGenerationMode(taskBody),
+      videoModel: resolveVideoModelKeyFromPayload(taskBody),
+      payload: taskBody,
+    },
+  })
 
   if (isBatch) {
     if (taskBody.videoOperation) {
@@ -452,7 +499,7 @@ export const POST = apiHandler(async (
           submitTask({
             userId: session.user.id,
             locale,
-            requestId: getRequestId(request),
+            requestId,
             projectId,
             episodeId,
             type: TASK_TYPE.VIDEO_PANEL,
@@ -482,6 +529,24 @@ export const POST = apiHandler(async (
       ),
     )
 
+    videoSubmitLogger.info({
+      audit: true,
+      action: 'video.submit.task_result',
+      requestId,
+      projectId,
+      userId: session.user.id,
+      message: 'video generation task submit result',
+      details: {
+        isBatch: true,
+        taskCount: results.length,
+        results: results.map((result) => ({
+          taskId: result.taskId,
+          status: result.status,
+          deduped: result.deduped === true,
+        })),
+      },
+    })
+
     return NextResponse.json({ tasks: results, total: panels.length * requestedCount })
   }
 
@@ -493,12 +558,48 @@ export const POST = apiHandler(async (
 
   const panel = await prisma.novelPromotionPanel.findFirst({
     where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true },
+    select: {
+      id: true,
+      imageUrl: true,
+      videoPrompt: true,
+      firstLastFramePrompt: true,
+      description: true,
+      videoUrl: true,
+      videoCandidates: true,
+      videoGenerationMode: true,
+    },
   })
 
   if (!panel) {
     throw new ApiError('NOT_FOUND')
   }
+
+  const resolvedPrompt = resolvePanelVideoPromptForLog(taskBody, panel)
+  videoSubmitLogger.info({
+    audit: true,
+    action: 'video.submit.resolved_panel_input',
+    requestId,
+    projectId,
+    userId: session.user.id,
+    message: 'video generation resolved panel input',
+    details: {
+      panelId: panel.id,
+      storyboardId,
+      panelIndex: Number(panelIndex),
+      generationMode: resolveVideoGenerationMode(taskBody),
+      promptSource: resolvedPrompt.source,
+      prompt: resolvedPrompt.prompt,
+      imageUrl: panel.imageUrl,
+      videoUrl: panel.videoUrl,
+      videoGenerationMode: panel.videoGenerationMode,
+      hasVideoCandidates: Boolean(panel.videoCandidates),
+      rawPanelFields: {
+        videoPrompt: panel.videoPrompt,
+        firstLastFramePrompt: panel.firstLastFramePrompt,
+        description: panel.description,
+      },
+    },
+  })
 
   const hasOutputAtStart = await hasPanelVideoOutput(panel.id)
 
@@ -507,7 +608,7 @@ export const POST = apiHandler(async (
       submitTask({
         userId: session.user.id,
         locale,
-        requestId: getRequestId(request),
+        requestId,
         projectId,
         type: TASK_TYPE.VIDEO_PANEL,
         targetType: 'NovelPromotionPanel',
@@ -534,6 +635,25 @@ export const POST = apiHandler(async (
       }),
     ),
   )
+
+  videoSubmitLogger.info({
+    audit: true,
+    action: 'video.submit.task_result',
+    requestId,
+    projectId,
+    userId: session.user.id,
+    message: 'video generation task submit result',
+    details: {
+      isBatch: false,
+      panelId: panel.id,
+      taskCount: results.length,
+      results: results.map((result) => ({
+        taskId: result.taskId,
+        status: result.status,
+        deduped: result.deduped === true,
+      })),
+    },
+  })
 
   return NextResponse.json(
     requestedCount === 1

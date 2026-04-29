@@ -73,6 +73,35 @@ describe('generateGrokVideo', () => {
     })
   })
 
+  it('supports text-to-video requests without a source image', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      request_id: 'req_text',
+    }), { status: 200 }))
+
+    const result = await generateGrokVideo({
+      userId: 'user-1',
+      prompt: 'cinematic time-lapse of a futuristic city',
+      options: {
+        provider: 'grok',
+        modelId: 'grok-imagine-video',
+        duration: 10,
+        resolution: '480p',
+        aspectRatio: '4:3',
+      },
+    })
+
+    const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))
+    expect(body).toMatchObject({
+      model: 'grok-imagine-video',
+      prompt: 'cinematic time-lapse of a futuristic city',
+      duration: 10,
+      resolution: '480p',
+      aspect_ratio: '4:3',
+    })
+    expect(body.image).toBeUndefined()
+    expect(result.externalId).toBe('GROK:VIDEO:req_text')
+  })
+
   it('uses reference_images when related visual references are provided', async () => {
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
       request_id: 'req_reference',
@@ -183,6 +212,29 @@ describe('generateGrokVideo', () => {
       prompt: 'change the camera move',
       video_url: 'https://example.com/source.mp4',
     })
+  })
+
+  it('makes sensitive thriller video prompts non-graphic before sending to xai', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      request_id: 'req_safe',
+    }), { status: 200 }))
+
+    await generateGrokVideo({
+      userId: 'user-1',
+      imageUrl: 'https://example.com/source.png',
+      prompt: '血珠砸上金属地面炸开，少年在桌下害怕屏息',
+      options: {
+        provider: 'grok',
+        modelId: 'grok-imagine-video',
+      },
+    })
+
+    const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))
+    expect(body.prompt).toContain('Grok media safety constraints')
+    expect(body.prompt).toContain('暗红色液滴落在金属地面迅速散开')
+    expect(body.prompt).not.toContain('血珠')
+    expect(body.prompt).not.toContain('砸上')
+    expect(body.prompt).not.toContain('炸开')
   })
 
   it('preserves non-json error bodies instead of masking them as invalid json', async () => {

@@ -10,6 +10,8 @@ import {
   readTrimmedString,
   resolveGrokProviderConfig,
 } from './shared'
+import { normalizeGrokMediaPromptForSafety } from './prompt-safety'
+import { logGrokProviderRequest, summarizeGrokMediaValue } from './request-log'
 import { setProxy } from '../../../../lib/prompts/proxy'
 
 export interface GrokVideoGenerateParams {
@@ -99,6 +101,7 @@ export async function generateGrokVideo(params: GrokVideoGenerateParams): Promis
   if (!prompt) {
     throw new Error('GROK_VIDEO_PROMPT_REQUIRED')
   }
+  const safePrompt = normalizeGrokMediaPromptForSafety(prompt)
 
   const lastFrameImageUrl = readTrimmedString(params.options.lastFrameImageUrl)
   if (lastFrameImageUrl) {
@@ -139,7 +142,7 @@ export async function generateGrokVideo(params: GrokVideoGenerateParams): Promis
 
   const body: Record<string, unknown> = {
     model: modelId,
-    prompt,
+    prompt: safePrompt,
   }
 
   let endpoint = '/videos/generations'
@@ -196,6 +199,18 @@ export async function generateGrokVideo(params: GrokVideoGenerateParams): Promis
   await setProxy()
 
   const requestUrl = `${providerConfig.baseUrl}${endpoint}`
+  logGrokProviderRequest({
+    mediaType: 'video',
+    requestUrl,
+    endpoint,
+    requestMode,
+    body,
+    sourceInputs: {
+      imageUrl: imageUrl ? summarizeGrokMediaValue(imageUrl) : null,
+      videoUrl: videoUrl ? summarizeGrokMediaValue(videoUrl) : null,
+      referenceImages: rawReferenceImages.map((image) => summarizeGrokMediaValue(image)),
+    },
+  })
   let response: Response
   try {
     response = await fetch(requestUrl, {

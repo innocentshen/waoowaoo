@@ -19,6 +19,14 @@ export interface WorkspaceStageVideoModelOption {
   videoPricingTiers?: VideoPricingTier[]
 }
 
+export interface WorkspaceStageImageModelOption {
+  value: string
+  label: string
+  provider?: string
+  providerName?: string
+  capabilities?: ModelCapabilities
+}
+
 export interface WorkspaceStageRuntimeValue {
   assetsLoading: boolean
   isSubmittingTTS: boolean
@@ -28,8 +36,10 @@ export interface WorkspaceStageRuntimeValue {
   isStartingScriptToStoryboard: boolean
   videoRatio: string | null | undefined
   artStyle: string | null | undefined
+  storyboardModel: string | null | undefined
   videoModel: string | null | undefined
   capabilityOverrides: CapabilitySelections
+  userImageModels: WorkspaceStageImageModelOption[]
   userVideoModels: WorkspaceStageVideoModelOption[]
   onNovelTextChange: (value: string) => Promise<void>
   onUpdateProjectConfig: (key: string, value: unknown) => Promise<void>

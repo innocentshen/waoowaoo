@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { NovelPromotionStoryboard, NovelPromotionClip } from '@/types/project'
 import { usePreviousEpisodeStoryboardSources, type StoryboardSourceStoryboard } from '@/lib/query/hooks'
+import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import { CharacterPickerModal, LocationPickerModal } from '../PanelEditForm'
 import ImageEditModal from './ImageEditModal'
 import AIDataModal from './AIDataModal'
@@ -21,6 +22,16 @@ interface StoryboardStageProps {
   storyboards: NovelPromotionStoryboard[]
   clips: NovelPromotionClip[]
   videoRatio: string
+  storyboardModel?: string
+  capabilityOverrides: CapabilitySelections
+  userImageModels: Array<{
+    value: string
+    label: string
+    provider?: string
+    providerName?: string
+    capabilities?: ModelCapabilities
+  }>
+  onUpdateProjectConfig: (key: string, value: unknown) => Promise<void>
   onBack: () => void
   onNext: () => void
   isTransitioning?: boolean
@@ -46,6 +57,10 @@ export default function StoryboardStage({
   storyboards: initialStoryboards,
   clips,
   videoRatio,
+  storyboardModel,
+  capabilityOverrides,
+  userImageModels,
+  onUpdateProjectConfig,
   onBack,
   onNext,
   isTransitioning = false,
@@ -239,6 +254,11 @@ export default function StoryboardStage({
           isCancelingAllPanelImageTasks={isCancelingAllPanelImageTasks}
           addingStoryboardGroup={addingStoryboardGroup}
           addingStoryboardGroupState={addingStoryboardGroupState}
+          storyboardModel={storyboardModel}
+          capabilityOverrides={capabilityOverrides}
+          videoRatio={videoRatio}
+          userImageModels={userImageModels}
+          onUpdateProjectConfig={onUpdateProjectConfig}
           onDownloadAllImages={downloadAllImages}
           onGenerateAllPanels={handleGenerateAllPanels}
           onCancelAllRunningPanels={cancelAllRunningPanelImageTasks}

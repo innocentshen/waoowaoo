@@ -163,4 +163,74 @@ describe('async poll ocompat', () => {
       videoUrl: 'https://cdn.test/video-fast.mp4',
     })
   })
+
+  it('polls async image tasks and reads result data url', async () => {
+    getUserModelsMock.mockResolvedValueOnce([
+      {
+        modelKey: 'openai-compatible:oa-1::gpt-image-2',
+        modelId: 'gpt-image-2',
+        name: 'GPT Image 2',
+        type: 'image',
+        provider: 'openai-compatible:oa-1',
+        price: 0,
+        compatMediaTemplate: {
+          version: 1,
+          mediaType: 'image',
+          mode: 'async',
+          create: {
+            method: 'POST',
+            path: '/images/generations',
+            contentType: 'application/json',
+            bodyTemplate: {
+              model: '{{model}}',
+              prompt: '{{prompt}}',
+              n: 1,
+              size: '{{size}}',
+              response_format: 'url',
+            },
+          },
+          status: { method: 'GET', path: '/tasks/{{task_id}}' },
+          response: {
+            taskIdPath: '$.data[0].task_id',
+            statusPath: '$.data.status',
+            outputUrlPath: '$.data.result.images[0].url[0]',
+            outputUrlsPath: '$.data.result.images',
+          },
+          polling: {
+            intervalMs: 3000,
+            timeoutMs: 180000,
+            doneStates: ['completed', 'succeeded', 'success'],
+            failStates: ['failed', 'error', 'canceled', 'cancelled'],
+          },
+        },
+      },
+    ])
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      code: 200,
+      data: {
+        id: 'task_img_1',
+        status: 'completed',
+        result: {
+          images: [
+            {
+              url: ['https://cdn.test/image.png'],
+              expires_at: 1776835126,
+            },
+          ],
+        },
+      },
+    }), { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const result = await pollAsyncTask(
+      `OCOMPAT:IMAGE:${encode('openai-compatible:oa-1')}:${encode('gpt-image-2')}:task_img_1`,
+      'user-1',
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      resultUrl: 'https://cdn.test/image.png',
+      imageUrl: 'https://cdn.test/image.png',
+    })
+  })
 })

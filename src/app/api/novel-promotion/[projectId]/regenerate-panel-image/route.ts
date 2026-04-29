@@ -10,8 +10,13 @@ import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { getProjectModelConfig } from '@/lib/config-service'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { resolveModelSelection } from '@/lib/api-config'
+import { createScopedLogger } from '@/lib/logging/core'
 
 const DEFAULT_CANDIDATE_COUNT = 1
+const imageSubmitLogger = createScopedLogger({
+  module: 'api.novel-promotion.image',
+  action: 'image.submit.request',
+})
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -22,6 +27,7 @@ export const POST = apiHandler(async (
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+  const requestId = getRequestId(request)
 
   const body = await request.json()
   const locale = resolveRequiredTaskLocale(request, body)
@@ -59,11 +65,25 @@ export const POST = apiHandler(async (
     ...(Object.keys(capabilityOptions).length > 0 ? { generationOptions: capabilityOptions } : {})}
 
   const hasOutputAtStart = await hasPanelImageOutput(panelId)
+  imageSubmitLogger.info({
+    audit: true,
+    requestId,
+    projectId,
+    userId: session.user.id,
+    message: 'panel image generation submit payload',
+    details: {
+      panelId,
+      requestedCount: candidateCount,
+      imageModel: projectModelConfig.storyboardModel,
+      payload: billingPayload,
+      hasOutputAtStart,
+    },
+  })
 
   const result = await submitTask({
     userId: session.user.id,
     locale,
-    requestId: getRequestId(request),
+    requestId,
     projectId,
     type: TASK_TYPE.IMAGE_PANEL,
     targetType: 'NovelPromotionPanel',
@@ -73,6 +93,21 @@ export const POST = apiHandler(async (
       hasOutputAtStart}),
     dedupeKey: `image_panel:${panelId}:${candidateCount}`,
     billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.IMAGE_PANEL, billingPayload)})
+
+  imageSubmitLogger.info({
+    audit: true,
+    action: 'image.submit.task_result',
+    requestId,
+    projectId,
+    userId: session.user.id,
+    message: 'panel image generation task submit result',
+    details: {
+      panelId,
+      taskId: result.taskId,
+      status: result.status,
+      deduped: result.deduped === true,
+    },
+  })
 
   return NextResponse.json(result)
 })

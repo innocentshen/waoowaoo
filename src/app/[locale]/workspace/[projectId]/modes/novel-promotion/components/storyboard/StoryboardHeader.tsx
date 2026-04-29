@@ -6,6 +6,8 @@ import { GlassButton, GlassChip, GlassSurface } from '@/components/ui/primitives
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
+import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
+import StoryboardImageModelSelector from './StoryboardImageModelSelector'
 
 interface StoryboardHeaderProps {
   totalSegments: number
@@ -16,6 +18,17 @@ interface StoryboardHeaderProps {
   pendingPanelCount: number
   isBatchSubmitting: boolean
   isCancelingAllPanelImageTasks: boolean
+  storyboardModel?: string
+  capabilityOverrides?: CapabilitySelections
+  videoRatio?: string
+  userImageModels?: Array<{
+    value: string
+    label: string
+    provider?: string
+    providerName?: string
+    capabilities?: ModelCapabilities
+  }>
+  onUpdateProjectConfig?: (key: string, value: unknown) => Promise<void>
   onDownloadAllImages: () => void
   onGenerateAllPanels: () => void
   onCancelAllRunningPanels: () => void
@@ -31,6 +44,11 @@ export default function StoryboardHeader({
   pendingPanelCount,
   isBatchSubmitting,
   isCancelingAllPanelImageTasks,
+  storyboardModel,
+  capabilityOverrides,
+  videoRatio,
+  userImageModels,
+  onUpdateProjectConfig,
   onDownloadAllImages,
   onGenerateAllPanels,
   onCancelAllRunningPanels,
@@ -78,7 +96,17 @@ export default function StoryboardHeader({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        {onUpdateProjectConfig ? (
+          <StoryboardImageModelSelector
+            models={userImageModels || []}
+            value={storyboardModel}
+            videoRatio={videoRatio || '9:16'}
+            capabilityOverrides={capabilityOverrides || {}}
+            onUpdateProjectConfig={onUpdateProjectConfig}
+          />
+        ) : null}
+
         {pendingPanelCount > 0 ? (
           <GlassButton
             variant="primary"

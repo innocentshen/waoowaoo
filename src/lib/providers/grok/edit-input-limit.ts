@@ -1,6 +1,6 @@
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 
-export const GROK_MULTI_IMAGE_EDIT_INPUT_LIMIT = 3
+export const GROK_MULTI_IMAGE_EDIT_INPUT_LIMIT = 5
 export const GROK_SINGLE_IMAGE_EDIT_INPUT_LIMIT = 1
 
 function readTrimmedString(value: unknown): string {

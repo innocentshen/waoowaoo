@@ -461,6 +461,11 @@ export function extractTemplateError(
     readJsonPath(payload, '$.error.message'),
     readJsonPath(payload, '$.message_zh'),
     readJsonPath(payload, '$.message'),
+    readJsonPath(payload, '$.msg'),
+    readJsonPath(payload, '$.data.error.message'),
+    readJsonPath(payload, '$.data.error'),
+    readJsonPath(payload, '$.data.message'),
+    readJsonPath(payload, '$.data.msg'),
     readJsonPath(payload, '$.error'),
   ]
   for (const candidate of fallbackCandidates) {

@@ -474,6 +474,21 @@
   },
   {
     "modelType": "llm",
+    "provider": "openai-compatible",
+    "modelId": "gpt-5.5",
+    "capabilities": {
+      "llm": {
+        "reasoningEffortOptions": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "llm",
     "provider": "openrouter",
     "modelId": "openai/gpt-5.4",
     "capabilities": {
@@ -483,6 +498,69 @@
           "medium",
           "high",
           "xhigh"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "llm",
+    "provider": "openrouter",
+    "modelId": "openai/gpt-5.5",
+    "capabilities": {
+      "llm": {
+        "reasoningEffortOptions": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "gpt-image-1",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "3:2",
+          "2:3",
+          "16:9",
+          "9:16"
+        ],
+        "resolutionOptions": [
+          "auto",
+          "1024x1024",
+          "1536x1024",
+          "1024x1536",
+          "1792x1024",
+          "1024x1792"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "openai-compatible",
+    "modelId": "gpt-image-2",
+    "capabilities": {
+      "image": {
+        "aspectRatioOptions": [
+          "1:1",
+          "3:2",
+          "2:3",
+          "16:9",
+          "9:16"
+        ],
+        "resolutionOptions": [
+          "auto",
+          "1024x1024",
+          "1536x1024",
+          "1024x1536",
+          "1792x1024",
+          "1024x1792"
         ]
       }
     }
@@ -1248,11 +1326,20 @@
     "capabilities": {
       "image": {
         "aspectRatioOptions": [
+          "auto",
           "1:1",
-          "2:3",
-          "3:2",
+          "16:9",
           "9:16",
-          "16:9"
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "2:1",
+          "1:2",
+          "19.5:9",
+          "9:19.5",
+          "20:9",
+          "9:20"
         ],
         "resolutionOptions": [
           "1k",
@@ -1289,10 +1376,12 @@
       "video": {
         "aspectRatioOptions": [
           "1:1",
-          "2:3",
-          "3:2",
+          "16:9",
           "9:16",
-          "16:9"
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3"
         ],
         "generationModeOptions": [
           "normal",

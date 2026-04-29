@@ -68,4 +68,20 @@ describe('async poll GROK video status mapping', () => {
       error: 'Grok: generation failed',
     })
   })
+
+  it('maps moderation rejection to an explicit failed status', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      status: 'done',
+      video: {
+        url: 'https://cdn.x.ai/video.mp4',
+        respect_moderation: false,
+      },
+    }), { status: 200 }))
+
+    const result = await pollAsyncTask('GROK:VIDEO:req_moderated', 'user-1')
+    expect(result).toEqual({
+      status: 'failed',
+      error: 'Grok: content moderated by xAI',
+    })
+  })
 })

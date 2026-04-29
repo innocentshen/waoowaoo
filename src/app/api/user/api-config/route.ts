@@ -1062,6 +1062,75 @@ const GROK2API_VIDEO_MODEL_IDS = new Set([
   'grok-imagine-1.0-video',
   'grok-imagine-video',
 ])
+const GPT_IMAGE_2_OPENAI_COMPAT_IMAGE_MODEL_IDS = new Set([
+  'gpt-image-2',
+])
+
+function getLegacyGenericMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate | null {
+  if (model.type === 'image') {
+    return {
+      version: 1,
+      mediaType: 'image',
+      mode: 'sync',
+      create: {
+        method: 'POST',
+        path: '/images/generations',
+        contentType: 'application/json',
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+        },
+      },
+      response: {
+        outputUrlPath: '$.data[0].url',
+        outputUrlsPath: '$.data',
+        errorPath: '$.error.message',
+      },
+    }
+  }
+
+  if (model.type === 'video') {
+    return {
+      version: 1,
+      mediaType: 'video',
+      mode: 'async',
+      create: {
+        method: 'POST',
+        path: '/videos',
+        contentType: 'multipart/form-data',
+        multipartFileFields: ['input_reference'],
+        bodyTemplate: {
+          model: '{{model}}',
+          prompt: '{{prompt}}',
+          seconds: '{{duration}}',
+          size: '{{size}}',
+          input_reference: '{{image}}',
+        },
+      },
+      status: {
+        method: 'GET',
+        path: '/videos/{{task_id}}',
+      },
+      content: {
+        method: 'GET',
+        path: '/videos/{{task_id}}/content',
+      },
+      response: {
+        taskIdPath: '$.id',
+        statusPath: '$.status',
+        errorPath: '$.error.message',
+      },
+      polling: {
+        intervalMs: 3000,
+        timeoutMs: 600000,
+        doneStates: ['completed', 'succeeded'],
+        failStates: ['failed', 'error', 'canceled'],
+      },
+    }
+  }
+
+  return null
+}
 
 function getGenericMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate {
   if (model.type === 'image') {
@@ -1076,6 +1145,8 @@ function getGenericMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate 
         bodyTemplate: {
           model: '{{model}}',
           prompt: '{{prompt}}',
+          size: '{{size}}',
+          response_format: 'b64_json',
         },
       },
       response: {
@@ -1119,8 +1190,110 @@ function getGenericMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate 
     polling: {
       intervalMs: 3000,
       timeoutMs: 600000,
-      doneStates: ['completed', 'succeeded'],
+      doneStates: ['completed', 'succeeded', 'success'],
       failStates: ['failed', 'error', 'canceled'],
+    },
+  }
+}
+
+function getGptImage2OpenAICompatImageTemplate(): OpenAICompatMediaTemplate {
+  return {
+    version: 1,
+    mediaType: 'image',
+    mode: 'sync',
+    create: {
+      method: 'POST',
+      path: '/images/generations',
+      contentType: 'application/json',
+      bodyTemplate: {
+        model: '{{model}}',
+        prompt: '{{prompt}}',
+        n: 1,
+        size: '{{size}}',
+        response_format: 'b64_json',
+      },
+    },
+    response: {
+      outputUrlPath: '$.data[0].url',
+      outputUrlsPath: '$.data',
+      errorPath: '$.error.message',
+    },
+  }
+}
+
+function getLegacyTaskAsyncOpenAICompatImageTemplate(model: StoredModel): OpenAICompatMediaTemplate | null {
+  const modelId = readTrimmedString(model.modelId)
+  if (model.type !== 'image' || !GPT_IMAGE_2_OPENAI_COMPAT_IMAGE_MODEL_IDS.has(modelId)) return null
+  return {
+    version: 1,
+    mediaType: 'image',
+    mode: 'async',
+    create: {
+      method: 'POST',
+      path: '/images/generations',
+      contentType: 'application/json',
+      bodyTemplate: {
+        model: '{{model}}',
+        prompt: '{{prompt}}',
+        n: 1,
+        size: '{{size}}',
+        response_format: 'url',
+      },
+    },
+    status: {
+      method: 'GET',
+      path: '/tasks/{{task_id}}',
+    },
+    response: {
+      taskIdPath: '$.data[0].task_id',
+      statusPath: '$.data.status',
+      outputUrlPath: '$.data.result.images[0].url[0]',
+      outputUrlsPath: '$.data.result.images',
+      errorPath: '$.data.error.message',
+    },
+    polling: {
+      intervalMs: 3000,
+      timeoutMs: 180000,
+      doneStates: ['completed', 'succeeded', 'success'],
+      failStates: ['failed', 'error', 'canceled', 'cancelled'],
+    },
+  }
+}
+
+function getLegacyGenerationAsyncOpenAICompatImageTemplate(model: StoredModel): OpenAICompatMediaTemplate | null {
+  const modelId = readTrimmedString(model.modelId)
+  if (model.type !== 'image' || !GPT_IMAGE_2_OPENAI_COMPAT_IMAGE_MODEL_IDS.has(modelId)) return null
+  return {
+    version: 1,
+    mediaType: 'image',
+    mode: 'async',
+    create: {
+      method: 'POST',
+      path: '/images/generations',
+      contentType: 'application/json',
+      bodyTemplate: {
+        model: '{{model}}',
+        prompt: '{{prompt}}',
+        size: '{{size}}',
+        response_format: 'url',
+      },
+    },
+    status: {
+      method: 'GET',
+      path: '/images/generations/{{task_id}}',
+    },
+    response: {
+      taskIdPath: '$.id',
+      statusPath: '$.status',
+      outputUrlPath: '$.result.data[0].url',
+      outputUrlsPath: '$.result.data',
+      errorPath: '$.error.message',
+    },
+    polling: {
+      intervalMs: 3000,
+      timeoutMs: 180000,
+      doneStates: ['completed'],
+      failStates: ['failed'],
     },
   }
 }
@@ -1135,7 +1308,10 @@ function resolveExistingMediaTemplate(
   }
 
   const staleCandidates = [
+    getLegacyGenericMediaTemplate(model),
     getGenericMediaTemplate(model),
+    getLegacyGenerationAsyncOpenAICompatImageTemplate(model),
+    getLegacyTaskAsyncOpenAICompatImageTemplate(model),
     getLegacyGrok2ApiMediaTemplate(model),
   ].filter((template): template is OpenAICompatMediaTemplate => !!template)
 
@@ -1226,6 +1402,10 @@ function areMediaTemplatesEqual(
 
 function getDefaultMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate {
   const modelId = readTrimmedString(model.modelId)
+
+  if (model.type === 'image' && GPT_IMAGE_2_OPENAI_COMPAT_IMAGE_MODEL_IDS.has(modelId)) {
+    return getGptImage2OpenAICompatImageTemplate()
+  }
 
   if (model.type === 'image' && GROK2API_IMAGE_EDIT_MODEL_IDS.has(modelId)) {
     return {
@@ -1331,6 +1511,8 @@ function getDefaultMediaTemplate(model: StoredModel): OpenAICompatMediaTemplate 
         bodyTemplate: {
           model: '{{model}}',
           prompt: '{{prompt}}',
+          size: '{{size}}',
+          response_format: 'b64_json',
         },
       },
       response: {

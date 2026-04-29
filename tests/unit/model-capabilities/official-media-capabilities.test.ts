@@ -25,10 +25,12 @@ describe('official media capability catalog', () => {
     expect(veoCaps?.video?.resolutionOptions).toEqual(['720p', '1080p', '4k'])
     expect(grokVideoCaps?.video?.aspectRatioOptions).toEqual([
       '1:1',
-      '2:3',
-      '3:2',
-      '9:16',
       '16:9',
+      '9:16',
+      '4:3',
+      '3:4',
+      '3:2',
+      '2:3',
     ])
     const grokDurations = grokVideoCaps?.video?.durationOptions || []
     expect(grokDurations[0]).toBe(1)
@@ -40,11 +42,20 @@ describe('official media capability catalog', () => {
     const grokImageProCaps = findBuiltinCapabilities('image', 'grok', 'grok-imagine-image-pro')
 
     expect(grokImageCaps?.image?.aspectRatioOptions).toEqual([
+      'auto',
       '1:1',
-      '2:3',
-      '3:2',
-      '9:16',
       '16:9',
+      '9:16',
+      '4:3',
+      '3:4',
+      '3:2',
+      '2:3',
+      '2:1',
+      '1:2',
+      '19.5:9',
+      '9:19.5',
+      '20:9',
+      '9:20',
     ])
     expect(grokImageCaps?.image?.resolutionOptions).toEqual(['1k', '2k'])
     expect(grokImageProCaps?.image?.aspectRatioOptions).toEqual([
@@ -65,5 +76,39 @@ describe('official media capability catalog', () => {
     )
 
     expect(capabilities?.llm?.reasoningEffortOptions).toEqual(['low', 'medium', 'high'])
+  })
+
+  it('exposes GPT-5.5 reasoning effort options for OpenAI compatible providers', () => {
+    const customCapabilities = findBuiltinCapabilities(
+      'llm',
+      'openai-compatible:provider-1',
+      'gpt-5.5',
+    )
+    const openRouterCapabilities = findBuiltinCapabilities(
+      'llm',
+      'openrouter',
+      'openai/gpt-5.5',
+    )
+
+    expect(customCapabilities?.llm?.reasoningEffortOptions).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(openRouterCapabilities?.llm?.reasoningEffortOptions).toEqual(['low', 'medium', 'high', 'xhigh'])
+  })
+
+  it('exposes OpenAI compatible GPT image model sizing capabilities', () => {
+    const capabilities = findBuiltinCapabilities(
+      'image',
+      'openai-compatible:provider-1',
+      'gpt-image-2',
+    )
+
+    expect(capabilities?.image?.aspectRatioOptions).toEqual(['1:1', '3:2', '2:3', '16:9', '9:16'])
+    expect(capabilities?.image?.resolutionOptions).toEqual([
+      'auto',
+      '1024x1024',
+      '1536x1024',
+      '1024x1536',
+      '1792x1024',
+      '1024x1792',
+    ])
   })
 })
